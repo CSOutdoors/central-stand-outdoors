@@ -1,0 +1,22 @@
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const vm=require('node:vm');
+const path=require('node:path');
+const src=fs.readFileSync(path.join(__dirname,'..','sw.js'),'utf8');
+const listeners={};const added=[];const deleted=[];const stored=[];let claimed=false,skipped=false;
+const cache={addAll:async urls=>added.push(...urls),put:async(...args)=>stored.push(args)};
+const caches={open:async()=>cache,keys:async()=>['cso-shell-old','other-cache'],delete:async key=>{deleted.push(key);return true;},match:async key=>key==='./index.html'?'cached-app-shell':undefined};
+const self={location:{origin:'https://cso.example'},clients:{claim:async()=>{claimed=true;}},skipWaiting:async()=>{skipped=true;},addEventListener:(type,fn)=>listeners[type]=fn};
+const context={self,caches,URL,Promise,fetch:async()=>{throw new Error('offline');}};
+vm.createContext(context);vm.runInContext(src,context,{filename:'sw.js'});
+(async()=>{
+  let installPromise;listeners.install({waitUntil:p=>installPromise=p});await installPromise;
+  assert.ok(added.includes('./index.html'));assert.ok(added.includes('./app.js'));assert.ok(added.includes('./manifest.webmanifest'));assert.ok(skipped);
+  let activatePromise;listeners.activate({waitUntil:p=>activatePromise=p});await activatePromise;
+  assert.deepEqual(deleted,['cso-shell-old']);assert.ok(claimed);
+  let responsePromise;listeners.fetch({request:{method:'GET',url:'https://cso.example/',mode:'navigate'},respondWith:p=>responsePromise=p});
+  const response=await responsePromise;assert.equal(response,'cached-app-shell');
+  let intercepted=false;listeners.fetch({request:{method:'GET',url:'https://api.weather.gov/points/1,2',mode:'cors'},respondWith:()=>intercepted=true});
+  assert.equal(intercepted,false);
+  console.log(JSON.stringify({passed:['Install caches the app shell including app.js and manifest','Activation removes old CSO shell caches and claims clients','Offline navigation falls back to cached index.html','Cross-origin NWS API requests are not cached or intercepted'],total:4},null,2));
+})().catch(err=>{console.error(err);process.exit(1);});

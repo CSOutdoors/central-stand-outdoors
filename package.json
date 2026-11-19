@@ -1,0 +1,10 @@
+{
+  "name": "central-stand-outdoors-field-companion",
+  "version": "0.4.1",
+  "private": true,
+  "description": "Central Stand Outdoors GPS-first PWA field companion",
+  "scripts": {
+    "check": "node --check app.js && node --check sw.js",
+    "test": "node tests/smoke-test.cjs && node tests/service-worker-test.cjs && python tests/static-check.py"
+  }
+}
