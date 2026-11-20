@@ -1,6 +1,6 @@
 'use strict';
-const CACHE_NAME = 'cso-shell-v0.8.2';
-const APP_SHELL = ['./','./index.html','./app.js','./manifest.webmanifest','./icons/icon-192.png','./icons/icon-512.png','./icons/apple-touch-icon.png'];
+const CACHE_NAME = 'cso-shell-v0.8.3';
+const APP_SHELL = ['./','./index.html','./trophy.html','./app.js','./manifest.webmanifest','./icons/icon-192.png','./icons/icon-512.png','./icons/apple-touch-icon.png'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(APP_SHELL)).then(() => self.skipWaiting()));
 });

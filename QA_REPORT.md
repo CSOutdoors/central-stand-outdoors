@@ -1,11 +1,7 @@
-# QA report — CSO Trophy Studio Concept Prototype 01
+# QA Report — CSO v0.8.3
 
-- HTML/CSS/JS assembled as a standalone, separate prototype.
-- Photo picker accepts browser-supported image formats and previews locally.
-- Mount-style selection updates summary.
-- Display-setting selection updates summary.
-- Generate action explicitly discloses that no AI service is connected; no fake generation is shown.
-- No external network calls, API keys, account creation, payments, or cloud storage.
-- Responsive layout includes a single-column mobile breakpoint.
-
-Manual visual testing on physical iPhone and cross-browser testing remain outstanding.
+- Integrated Trophy Studio entry point in the main dashboard.
+- Added dedicated `trophy.html` page with return navigation.
+- Added Trophy Studio page to service-worker app shell and bumped cache version.
+- Photo picker and local preview remain browser-only; no network upload or AI generation is implemented.
+- Existing hunting app files and localStorage schema preserved from v0.8.2.
