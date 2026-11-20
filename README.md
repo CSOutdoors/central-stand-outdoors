@@ -51,3 +51,16 @@ Saved property names, coordinates, notes, and wind settings stay in local browse
 - ScentCast uses a widening scent-cloud footprint and animated downwind particles (respects reduced-motion settings).
 - Safe-wind setup is now a visual compass rose: tap one or more directions from which wind may safely come.
 - The compass uses wind FROM convention; all selected directions are saved in the existing data format.
+
+## v0.6.1 map planning
+- Add a stand, camera, food plot, access point, or sighting from the map without using GPS: choose **Add location on map**, tap the map, then save the selected point from the location form.
+- Draw a property boundary by choosing **Draw property boundary**, tapping each corner/bend, and choosing **Finish boundary**. Boundaries are saved locally and included in backup exports.
+- ScentCast now renders 150 faster-moving particles for a denser airflow effect. The plume remains an illustrative visualization, not measured scent transport.
+- Parcel-click selection is not included yet. That requires reliable parcel polygon data for the selected county and a suitable data-use agreement/source; the current boundary tool lets the hunter trace the property manually.
+
+
+## v0.6.1 updates
+- ScentCast now uses 280 smaller particles with faster continuous movement and more size/brightness variation.
+- Map-based field wind observation: choose a saved stand, select **Set wind from map**, then tap the map in the direction the wind is coming FROM. The direction is saved to that stand and takes priority over the regional forecast for that stand.
+- Refresh an NWS forecast at the selected stand coordinates or at a fresh GPS fix. GPS identifies the forecast location; it does not measure wind. NWS wind remains a grid forecast, not an anemometer reading.
+- Existing manually drawn property boundaries and manual map stand placement remain available.

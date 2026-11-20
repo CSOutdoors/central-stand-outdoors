@@ -173,7 +173,7 @@ function makeHarness(options={}){
   await weather.elements.weatherBtn.click();
   const wstate=JSON.parse(weather.store.get('cso_gps_v4'));
   assert.equal(wstate.weather.windSector,'NE');assert.equal(wstate.weather.windSpeedMinMph,5);assert.equal(wstate.weather.windSpeedMaxMph,10);
-  assert.match(weather.elements.advisor.textContent,/Configured wind match: NE Stand/);
+  assert.match(weather.elements.advisor.textContent,/Safe-wind match: NE Stand/);
   passed.push('NWS logic simulation: wind range and NNE-to-NE sector handled; advisor match shown');
 
   const variableFetch=async url=> url.includes('/points/')?{ok:true,json:async()=>({properties:{forecastHourly:'https://api.weather.gov/hourly'}})}:{ok:true,json:async()=>({properties:{periods:[{windSpeed:'0 mph',windDirection:'Variable',temperature:41,temperatureUnit:'F',shortForecast:'Cloudy',startTime:'2026-11-19T17:00:00-06:00'}]}})};
@@ -181,6 +181,13 @@ function makeHarness(options={}){
   await variable.elements.savePoint.click();await variable.elements.weatherBtn.click();
   assert.match(variable.elements.advisor.textContent,/variable or unsupported wind direction/i);
   passed.push('NWS logic simulation: variable wind does not produce a false stand match');
+
+  // Stand-level observed wind survives normalization and is reflected in the map selector.
+  const observed=makeHarness({storage:{cso_gps_v4:JSON.stringify({property:{},points:[{id:'obs-1',name:'Creek Stand',type:'stand',lat:40.1,lon:-89.1,winds:['E'],windFromDeg:67.5,windObservedAt:'2026-11-19T12:00:00Z'}],parcels:[],weather:null})}});
+  const observedState=JSON.parse(observed.store.get('cso_gps_v4'));
+  assert.equal(observedState.points[0].windFromDeg,67.5);
+  assert.match(observed.elements.windStandSelect.textContent,/Creek Stand/);
+  passed.push('Observed stand wind persists through state normalization and populates the stand selector');
 
   console.log(JSON.stringify({passed,total:passed.length},null,2));
 })().catch(err=>{console.error(err);process.exit(1);});
