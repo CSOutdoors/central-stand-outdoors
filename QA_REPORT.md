@@ -1,15 +1,11 @@
-# QA Report — CSO v0.8.2
+# QA report — CSO Trophy Studio Concept Prototype 01
 
-## Automated checks
-- 18/18 application smoke tests passed.
-- 4/4 service-worker tests passed.
-- Static checks passed, including unique IDs, button types, PWA shell, CSP, local-only GPS behavior, and the new visible remote stand-placement workflow.
-- JavaScript syntax checks passed for app.js and sw.js.
+- HTML/CSS/JS assembled as a standalone, separate prototype.
+- Photo picker accepts browser-supported image formats and previews locally.
+- Mount-style selection updates summary.
+- Display-setting selection updates summary.
+- Generate action explicitly discloses that no AI service is connected; no fake generation is shown.
+- No external network calls, API keys, account creation, payments, or cloud storage.
+- Responsive layout includes a single-column mobile breakpoint.
 
-## Manual iPhone verification still required
-- Confirm the new Add Stand / Location button is visible without opening advanced tools.
-- Search for a property many miles away, zoom to a known stand, tap and drag the pin, and save.
-- Confirm the stand persists and appears in Today's Hunt and the saved locations list.
-- Confirm existing local stands and settings remain intact after deployment.
-
-Automated checks do not replace real-device map tile, touch, and GPS testing.
+Manual visual testing on physical iPhone and cross-browser testing remain outstanding.
