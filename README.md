@@ -1,6 +1,6 @@
-# Central Stand Outdoors — Hunt Decision Foundation v0.5.1
+# Central Stand Outdoors — Hunt Decision Foundation v0.5.2
 
-## What's new in v0.5.1
+## What's new in v0.5.2
 - Adds a ScentCast beta panel to the property map.
 - Lets the hunter select a saved stand and draw an estimated downwind exposure fan using the latest NWS forecast wind direction.
 - Adds a directional axis and stand marker, plus a plain-language explanation of the projected downwind direction.
@@ -41,7 +41,13 @@ Saved property names, coordinates, notes, and wind settings stay in local browse
 - NWS live requests and USGS imagery need continued device/network testing. A secure backend may eventually be needed for reliable weather access and any paid AI API integration.
 
 
-### v0.5.1 ScentCast visual update
+### v0.5.2 ScentCast visual update
 - Added subtle animated pulsing to the conceptual scent fan and moving dash flow along its centerline.
 - Respects device reduced-motion settings.
 - No change to saved-data format or location storage.
+
+
+### v0.5.2
+- ScentCast uses a widening scent-cloud footprint and animated downwind particles (respects reduced-motion settings).
+- Safe-wind setup is now a visual compass rose: tap one or more directions from which wind may safely come.
+- The compass uses wind FROM convention; all selected directions are saved in the existing data format.

@@ -6,7 +6,8 @@
   const DIRECTIONS = ['N','NE','E','SE','S','SW','W','NW'];
   const TYPES = {stand:'Stand',camera:'Camera',food:'Food Plot',access:'Access Point',sighting:'Deer Sighting'};
   const state = {version:1,property:{name:'',lat:null,lon:null},points:[],weather:null};
-  let map = null, markers = {}, gpsMarker = null, accuracyCircle = null, scentLayers = [], lastFix = null, toastTimer = null, mapCentered = false, weatherRefreshFailed = false, scentVisible = false;
+  let map = null, markers = {}, gpsMarker = null, accuracyCircle = null, scentLayers = [], scentFrame = 0, lastFix = null, toastTimer = null, mapCentered = false, weatherRefreshFailed = false, scentVisible = false;
+  const selectedWindDirs = new Set();
 
   function newId(){
     if (crypto && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
@@ -65,8 +66,15 @@
   function showToast(message){const el=$('toast');el.textContent=message;el.style.display='block';clearTimeout(toastTimer);toastTimer=setTimeout(()=>{el.style.display='none';},3200);}
   function setStatus(id,message,kind){const el=$(id);el.textContent=message;el.classList.toggle('bad',kind==='error');el.classList.toggle('good',kind==='success');}
   function makeWindChecks(){
-    const root=$('windChecks');
-    for(const dir of DIRECTIONS){const label=document.createElement('label');const input=document.createElement('input');input.type='checkbox';input.value=dir;input.setAttribute('aria-label',`Wind from ${dir}`);label.append(input,document.createTextNode(dir));root.append(label);}
+    const root=$('windChecks');root.replaceChildren();
+    const layout=[['NW','N','NE'],['W','CENTER','E'],['SW','S','SE']];
+    const arrows={N:'↑',NE:'↗',E:'→',SE:'↘',S:'↓',SW:'↙',W:'←',NW:'↖'};
+    for(const row of layout)for(const dir of row){
+      if(dir==='CENTER'){const center=document.createElement('div');center.className='wind-center';center.textContent='YOUR STAND';root.append(center);continue;}
+      const button=document.createElement('button');button.type='button';button.className='wind-direction';button.dataset.direction=dir;button.setAttribute('aria-pressed','false');button.setAttribute('aria-label',`Safe wind from ${dir}`);
+      const arrow=document.createElement('span');arrow.className='wind-arrow';arrow.textContent=arrows[dir];const label=document.createElement('strong');label.textContent=dir;button.append(arrow,label);
+      button.addEventListener('click',()=>{if(selectedWindDirs.has(dir))selectedWindDirs.delete(dir);else selectedWindDirs.add(dir);button.setAttribute('aria-pressed',String(selectedWindDirs.has(dir)));});root.append(button);
+    }
   }
   function makeMap(){
     if(!window.L||typeof L.map!=='function'){$('map').classList.add('hidden');$('mapFallback').style.display='block';setStatus('mapStatus','Interactive map library did not load. Saved coordinates are still available.','error');return;}
@@ -135,14 +143,35 @@
     else $('scentStatus').textContent=`Forecast wind FROM ${state.weather.windSector} at ${Math.round(state.weather.windSpeedMinMph)}–${Math.round(state.weather.windSpeedMaxMph)} mph. Choose a stand, then show the conceptual plume.`;
   }
   function destination(lat,lon,bearingDeg,distanceM){const R=6371000,b=bearingDeg*Math.PI/180,p1=lat*Math.PI/180,l1=lon*Math.PI/180,d=distanceM/R;const p2=Math.asin(Math.sin(p1)*Math.cos(d)+Math.cos(p1)*Math.sin(d)*Math.cos(b));const l2=l1+Math.atan2(Math.sin(b)*Math.sin(d)*Math.cos(p1),Math.cos(d)-Math.sin(p1)*Math.sin(p2));return [p2*180/Math.PI,((l2*180/Math.PI+540)%360)-180];}
-  function clearScent(){scentLayers.forEach(layer=>{if(map)map.removeLayer(layer);});scentLayers=[];}
+  function clearScent(){
+    if(scentFrame)cancelAnimationFrame(scentFrame);scentFrame=0;
+    scentLayers.forEach(layer=>{if(map)map.removeLayer(layer);});scentLayers=[];
+  }
   function drawScent(){
     clearScent();const id=$('scentStand').value,stand=state.points.find(p=>p.id===id);if(!stand||!state.weather?.windSector){setStatus('scentStatus','Choose a stand and load a valid wind forecast first.','error');return;}
     const from=DIRECTIONS.indexOf(state.weather.windSector)*45,to=(from+180)%360,speed=(state.weather.windSpeedMinMph+state.weather.windSpeedMaxMph)/2;
-    const length=Math.max(100,Math.min(600,180+speed*18));const spread=Math.max(18,Math.min(42,24+speed*.7));
-    const left=destination(stand.lat,stand.lon,to-spread,length),tip=destination(stand.lat,stand.lon,to,length),right=destination(stand.lat,stand.lon,to+spread,length);
-    if(map){const plume=L.polygon([[stand.lat,stand.lon],left,tip,right],{color:'#e18a38',weight:2,fillColor:'#e18a38',fillOpacity:.24,dashArray:'5 5',className:'cso-scent-plume'}).addTo(map);const axis=L.polyline([[stand.lat,stand.lon],tip],{color:'#ffd08b',weight:3,dashArray:'2 13',lineCap:'round',className:'cso-scent-flow'}).addTo(map);const marker=L.circleMarker([stand.lat,stand.lon],{radius:7,color:'#fff',weight:2,fillColor:'#87bd8d',fillOpacity:1}).addTo(map).bindPopup(`${stand.name} · scent source`);scentLayers.push(plume,axis,marker);map.fitBounds(plume.getBounds().pad(.45));}
-    const toDir=DIRECTIONS[Math.round(to/45)%8];setStatus('scentStatus',`Estimated plume travels generally ${toDir} from ${stand.name}. Forecast wind FROM ${state.weather.windSector}; illustrative length ${Math.round(length)} m. Actual scent travel can vary substantially.`,'success');
+    const length=Math.max(100,Math.min(650,160+speed*22));const spread=Math.max(15,Math.min(48,19+speed*.9));
+    const center=[stand.lat,stand.lon];
+    // Smooth, widening footprint: a series of cross-sections instead of a triangular arrow.
+    const left=[],right=[];
+    for(let i=0;i<=12;i++){const t=i/12,dist=length*t,fanAngle=Math.min(52,spread*t);left.push(destination(stand.lat,stand.lon,to-fanAngle,dist));right.unshift(destination(stand.lat,stand.lon,to+fanAngle,dist));}
+    const outline=[...left,...right];
+    if(map){
+      const haze=L.polygon(outline,{color:'#e18a38',weight:1,fillColor:'#e18a38',fillOpacity:.13,interactive:false,className:'cso-scent-plume'}).addTo(map);
+      const core=L.polygon([left[0],...left.slice(3,10),...right.slice(3,10),right[right.length-1]],{color:'#f0a04d',weight:1,fillColor:'#f0a04d',fillOpacity:.10,interactive:false,className:'cso-scent-edge'}).addTo(map);
+      const axis=L.polyline([center,destination(stand.lat,stand.lon,to,length)],{color:'#ffd08b',weight:1.5,opacity:.65,dashArray:'3 10',interactive:false}).addTo(map);
+      const marker=L.circleMarker(center,{radius:8,color:'#fff',weight:2,fillColor:'#87bd8d',fillOpacity:1}).addTo(map).bindPopup(`${stand.name} · scent source`);
+      scentLayers.push(haze,core,axis,marker);
+      const reduced=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if(!reduced){
+        const particles=[];let last=0;
+        for(let i=0;i<34;i++){const particle=L.circleMarker(center,{radius:2+(i%3),stroke:false,fillColor:i%4===0?'#ffe0a5':'#e18a38',fillOpacity:.72,interactive:false}).addTo(map);particles.push({layer:particle,phase:(i/34),side:((i*17)%11-5)/5});scentLayers.push(particle);}
+        const animate=now=>{if(!scentVisible||!map)return;if(now-last>45){last=now;const rate=Math.max(.000035,Math.min(.00012,(.000045+speed*.000004)));for(const item of particles){item.phase=(item.phase+rate*30)%1;const t=item.phase,spreadMeters=(spread*t*t+4)*item.side;const bearing=to+(spreadMeters/Math.max(30,length*t))*42;const point=destination(stand.lat,stand.lon,bearing,length*t);item.layer.setLatLng(point);item.layer.setStyle({fillOpacity:.18+.65*Math.sin(Math.PI*t),radius:1.5+(1-t)*2.8});}}scentFrame=requestAnimationFrame(animate);};
+        scentFrame=requestAnimationFrame(animate);
+      }
+      map.fitBounds(haze.getBounds().pad(.45));
+    }
+    const toDir=DIRECTIONS[Math.round(to/45)%8];setStatus('scentStatus',`Scent is projected generally ${toDir} from ${stand.name}. Wind FROM ${state.weather.windSector} at ${Math.round(state.weather.windSpeedMinMph)}–${Math.round(state.weather.windSpeedMaxMph)} mph. The widening cloud and moving particles illustrate dispersion, not a measured scent boundary.`,'success');
   }
   function renderAll(){renderList();renderWeather();renderAdvisor();draw();if(map&&!mapCentered){const target=state.property.lat!==null?[state.property.lat,state.property.lon]:(state.points[0]?[state.points[0].lat,state.points[0].lon]:null);if(target){map.setView(target,14);mapCentered=true;}}}
   function windSector(direction){
@@ -177,10 +206,10 @@
   function updateProperty(fix){const next={...state,property:{name:$('propertyName').value.trim()||'My Property',lat:fix.lat,lon:fix.lon}};try{saveState(next);renderAll();showToast('Property center saved on this device.');}catch(err){showToast(err.message);}}
   function savePoint(fix){
     const type=$('pointType').value;if(!Object.hasOwn(TYPES,type))throw new Error('Choose a valid location type.');
-    const winds=type==='stand'?[...$('windChecks').querySelectorAll('input:checked')].map(x=>x.value):[];
+    const winds=type==='stand'?DIRECTIONS.filter(dir=>selectedWindDirs.has(dir)):[];
     const count=state.points.filter(p=>p.type===type).length+1;
     const point={id:newId(),name:$('pointName').value.trim()||`${TYPES[type]} ${count}`,type,winds,notes:$('pointNotes').value.trim(),lat:fix.lat,lon:fix.lon,accuracy:fix.accuracy,created:new Date().toISOString()};
-    const next={...state,points:[...state.points,point]};saveState(next);$('pointName').value='';$('pointNotes').value='';$('windChecks').querySelectorAll('input').forEach(x=>x.checked=false);renderAll();showToast(`${point.name} saved on this device.`);
+    const next={...state,points:[...state.points,point]};saveState(next);$('pointName').value='';$('pointNotes').value='';selectedWindDirs.clear();$('windChecks').querySelectorAll('[data-direction]').forEach(x=>x.setAttribute('aria-pressed','false'));renderAll();showToast(`${point.name} saved on this device.`);
   }
   async function fetchWithTimeout(url,options,ms=16000){const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),ms);try{return await fetch(url,{...options,signal:controller.signal});}finally{clearTimeout(timer);}}
   async function loadWeather(){

@@ -58,7 +58,7 @@ function makeHarness(options={}){
   passed.push('Leaflet unavailable: map fallback is shown without breaking app initialization');
 
   h.elements.pointName.value='North Ridge';
-  const n=h.elements.windChecks.children.find(label=>label.children[0]?.value==='NE').children[0];n.checked=true;
+  const n=h.elements.windChecks.children.find(button=>button.dataset?.direction==='NE');assert(n);await n.click();
   await h.elements.savePoint.click();
   let saved=JSON.parse(h.store.get('cso_gps_v4'));
   assert.equal(saved.points.length,1);assert.equal(saved.points[0].name,'North Ridge');assert.equal(saved.points[0].type,'stand');assert.equal(saved.points[0].lat,40.75);assert.deepEqual(saved.points[0].winds,['NE']);
@@ -168,7 +168,7 @@ function makeHarness(options={}){
   const weatherFetch=async url=> url.includes('/points/')?{ok:true,json:async()=>({properties:{forecastHourly:'https://api.weather.gov/gridpoints/ILX/1,1/forecast/hourly'}})}:{ok:true,json:async()=>({properties:{periods:[{windSpeed:'5 to 10 mph',windDirection:'NNE',temperature:48,temperatureUnit:'F',shortForecast:'Partly Cloudy',startTime:'2026-11-19T16:00:00-06:00'}]}})};
   const weather=makeHarness({fetch:weatherFetch});
   weather.elements.pointName.value='NE Stand';
-  weather.elements.windChecks.children.find(label=>label.children[0]?.value==='NE').children[0].checked=true;
+  await weather.elements.windChecks.children.find(button=>button.dataset?.direction==='NE').click();
   await weather.elements.savePoint.click();
   await weather.elements.weatherBtn.click();
   const wstate=JSON.parse(weather.store.get('cso_gps_v4'));
