@@ -33,4 +33,9 @@ assert 'getCurrentPosition' in app and 'watchPosition' not in app, 'Location mus
 assert 'maximumAge:0' in app, 'GPS save should request a fresh location fix'
 assert 'https://api.weather.gov/points/' in app
 assert 'https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/' in app
-print('Static checks passed: unique IDs, explicit button types, iPhone viewport metadata, CSP, PWA manifest/icons, service-worker shell, no innerHTML sinks, GPS/NWS/USGS wiring.')
+# Manual placement must be prominent and must not require GPS.
+assert 'id="manualPointBtn"' in html and 'ADD STAND / LOCATION' in html
+assert 'details.open=true' in app and 'STEP 1: Search the property' in app
+assert 'SAVE THIS PLANNED MAP LOCATION' in app
+assert 'map.setView([lat,lon],Math.max(map.getZoom(),16))' in app
+print('Static checks passed: unique IDs, explicit button types, iPhone viewport metadata, CSP, PWA manifest/icons, service-worker shell, no innerHTML sinks, GPS/NWS/USGS wiring, and prominent remote stand-placement workflow.')

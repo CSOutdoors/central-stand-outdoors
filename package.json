@@ -1,8 +1,8 @@
 {
   "name": "central-stand-outdoors-field-companion",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "private": true,
-  "description": "Central Stand Outdoors \u2014 local Intelligent Hunt Advisor field companion",
+  "description": "Central Stand Outdoors \u2014 local Intelligent Hunt Advisor and map-planning field companion",
   "scripts": {
     "check": "node --check app.js && node --check sw.js",
     "test": "node tests/smoke-test.cjs && node tests/service-worker-test.cjs && python tests/static-check.py"

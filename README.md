@@ -1,4 +1,11 @@
-# Central Stand Outdoors — Intelligent Hunt Advisor v0.8.1 (local-only)
+# Central Stand Outdoors — Map-first stand planning v0.8.2 (local-only)
+
+## What's new in v0.8.2
+- Promotes **ADD STAND / LOCATION** to a large, always-visible map action instead of hiding it in advanced tools.
+- Opens the location form automatically and guides the user through searching for a distant property, zooming in, tapping the exact map location, dragging the pin to fine-tune, and saving.
+- Makes clear that manual map placement works from home and does not use the phone's GPS.
+- Improves search handoff: a successful place search zooms closer and updates the manual-placement instructions.
+- Preserves the v0.8.1 Intelligent Hunt Advisor and all existing local data.
 
 ## What's new in v0.8.1
 - Adds a transparent local Hunt Advisor suitability index for each saved stand across the next 24 forecast hours.
@@ -6,7 +13,7 @@
 - Uses National Weather Service hourly precipitation probability when supplied; missing values receive a neutral score rather than being treated as zero precipitation.
 - Hourly dashboard chips now display the broader suitability score. Existing hourly wind-only reports remain available for direct Ideal Wind comparisons.
 - Preserves the existing local storage key (`cso_gps_v4`), saved points, parcels, and weather records. No cloud account, backend, or external AI service is added.
-- Bumps the service-worker cache to v0.8.1.
+- Bumps the service-worker cache to v0.8.2.
 
 ## Important limits
 The suitability index is a transparent planning aid, not a validated deer-activity model, harvest probability, or guarantee. The temperature and wind-speed bands are general planning heuristics, not proven whitetail behavior rules. It does not yet incorporate barometric-pressure trends, on-site wind instruments, terrain/thermal effects, hunting pressure, food/bedding locations, access disturbance, or your personal observation journal. NWS wind and precipitation are forecast values, not measurements at the stand. Always verify conditions and make the final decision yourself.

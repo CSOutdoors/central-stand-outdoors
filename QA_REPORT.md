@@ -1,21 +1,15 @@
-# CSO v0.8.1 — QA report
+# QA Report — CSO v0.8.2
 
-## Changes validated
-- Local Hunt Advisor suitability scoring added for hourly stand comparisons.
-- Score components are explicit: wind alignment 65, wind-speed context 10, temperature context 15, precipitation probability 10.
-- NWS hourly precipitation probability is normalized and stored when available; absent values remain unknown and receive neutral weighting.
-- Existing direct wind-match report remains unchanged.
-- Existing localStorage key/schema retained; no data migration or cloud configuration introduced.
-- Service-worker cache bumped to `cso-shell-v0.8.1`.
+## Automated checks
+- 18/18 application smoke tests passed.
+- 4/4 service-worker tests passed.
+- Static checks passed, including unique IDs, button types, PWA shell, CSP, local-only GPS behavior, and the new visible remote stand-placement workflow.
+- JavaScript syntax checks passed for app.js and sw.js.
 
-## Automated validation
-- JavaScript syntax: passed.
-- App smoke tests: 18/18 passed.
-- Service-worker tests: 4/4 passed.
-- Static checks: passed (unique IDs, button types, iPhone viewport metadata, CSP, PWA assets, service-worker shell, no `innerHTML` sinks, GPS/NWS/USGS wiring).
+## Manual iPhone verification still required
+- Confirm the new Add Stand / Location button is visible without opening advanced tools.
+- Search for a property many miles away, zoom to a known stand, tap and drag the pin, and save.
+- Confirm the stand persists and appears in Today's Hunt and the saved locations list.
+- Confirm existing local stands and settings remain intact after deployment.
 
-## Not yet validated
-- Actual iPhone Safari/Home Screen update behavior for this release.
-- Real NWS precipitation probability availability and local forecast accuracy across all service areas.
-- Whether heuristic temperature and wind-speed weights improve real hunting decisions; this requires field feedback and should not be represented as a deer-activity prediction.
-- Conversational LLM advisor, barometric-pressure analysis, terrain/thermal airflow, parcel auto-selection, and learned property-specific deer movement are not included.
+Automated checks do not replace real-device map tile, touch, and GPS testing.
