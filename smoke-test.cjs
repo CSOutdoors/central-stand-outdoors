@@ -33,7 +33,7 @@ class FakeNode {
 }
 class FakeText { constructor(text){this.text=String(text);} get textContent(){return this.text;} }
 function makeHarness(options={}){
-  const ids=['connectionStatus','gpsStatus','propertyName','saveProperty','pointType','pointName','windChecks','pointNotes','savePoint','windValue','tempValue','weatherSummary','weatherBtn','pointList','storageStatus','map','mapFallback','mapStatus','advisor','toast','locateBtn','exportBtn','restoreFile','mapHeading'];
+  const ids=['connectionStatus','gpsStatus','propertyName','saveProperty','pointType','pointName','windChecks','pointNotes','savePoint','windValue','tempValue','weatherSummary','weatherBtn','pointList','storageStatus','map','mapFallback','mapStatus','advisor','toast','locateBtn','exportBtn','restoreFile','mapHeading','hourlyStandSelect','hourlyWindReport','recenterGpsBtn'];
   const elements=Object.fromEntries(ids.map(id=>[id,new FakeNode()]));
   elements.pointType.value='stand';
   const body=new FakeNode('body');
@@ -165,16 +165,16 @@ function makeHarness(options={}){
   passed.push('XSS regression: saved text is rendered with text nodes, not HTML');
 
   // NWS parsing path: range speeds and 16-point compass are normalized.
-  const weatherFetch=async url=> url.includes('/points/')?{ok:true,json:async()=>({properties:{forecastHourly:'https://api.weather.gov/gridpoints/ILX/1,1/forecast/hourly'}})}:{ok:true,json:async()=>({properties:{periods:[{windSpeed:'5 to 10 mph',windDirection:'NNE',temperature:48,temperatureUnit:'F',shortForecast:'Partly Cloudy',startTime:'2026-11-19T16:00:00-06:00'}]}})};
+  const weatherFetch=async url=> url.includes('/points/')?{ok:true,json:async()=>({properties:{forecastHourly:'https://api.weather.gov/gridpoints/ILX/1,1/forecast/hourly'}})}:{ok:true,json:async()=>({properties:{periods:[{windSpeed:'5 to 10 mph',windDirection:'NNE',temperature:48,temperatureUnit:'F',shortForecast:'Partly Cloudy',startTime:new Date(Date.now()+3600000).toISOString()},{windSpeed:'8 mph',windDirection:'ESE',temperature:45,temperatureUnit:'F',shortForecast:'Clear',startTime:new Date(Date.now()+7200000).toISOString()}]}})};
   const weather=makeHarness({fetch:weatherFetch});
   weather.elements.pointName.value='NE Stand';
   await weather.elements.windChecks.children.find(button=>button.dataset?.direction==='NE').click();
   await weather.elements.savePoint.click();
   await weather.elements.weatherBtn.click();
   const wstate=JSON.parse(weather.store.get('cso_gps_v4'));
-  assert.equal(wstate.weather.windSector,'NE');assert.equal(wstate.weather.windSpeedMinMph,5);assert.equal(wstate.weather.windSpeedMaxMph,10);
-  assert.match(weather.elements.advisor.textContent,/Safe-wind match: NE Stand/);
-  passed.push('NWS logic simulation: wind range and NNE-to-NE sector handled; advisor match shown');
+  assert.equal(wstate.weather.windSector,'NE');assert.equal(wstate.weather.windSpeedMinMph,5);assert.equal(wstate.weather.windSpeedMaxMph,10);assert.equal(wstate.weather.hourly.length,2);assert.equal(wstate.weather.hourly[1].windSector,'SE');
+  assert.match(weather.elements.advisor.textContent,/Safe-wind match: NE Stand/);assert.match(weather.elements.hourlyWindReport.textContent,/Next 24 hours/);assert.match(weather.elements.hourlyWindReport.textContent,/50\/100/);
+  passed.push('NWS hourly forecast: 2 hourly periods persisted; NNE-to-NE sector normalized and hourly data retained');
 
   const variableFetch=async url=> url.includes('/points/')?{ok:true,json:async()=>({properties:{forecastHourly:'https://api.weather.gov/hourly'}})}:{ok:true,json:async()=>({properties:{periods:[{windSpeed:'0 mph',windDirection:'Variable',temperature:41,temperatureUnit:'F',shortForecast:'Cloudy',startTime:'2026-11-19T17:00:00-06:00'}]}})};
   const variable=makeHarness({fetch:variableFetch});variable.elements.pointName.value='Stand';

@@ -47,7 +47,7 @@
     }
     const parcels=Array.isArray(raw.parcels)?raw.parcels.slice(0,100).map(parcel=>({id:cleanText(parcel.id,80)||newId(),name:cleanText(parcel.name,80)||'Property boundary',coordinates:Array.isArray(parcel.coordinates)?parcel.coordinates.slice(0,500).map(pair=>[Number(pair[0]),Number(pair[1])]).filter(pair=>finiteCoord(pair[0],pair[1])):[]})).filter(parcel=>parcel.coordinates.length>=3):[];
     for(const point of points){const deg=point.windFromDeg===null||point.windFromDeg===undefined?NaN:Number(point.windFromDeg);point.windFromDeg=Number.isFinite(deg)&&deg>=0&&deg<360?deg:null;point.windObservedAt=cleanText(point.windObservedAt||'',40);}
-    if(weather){weather.lat=weather.lat===null||weather.lat===undefined?null:(Number.isFinite(Number(weather.lat))?Number(weather.lat):null);weather.lon=weather.lon===null||weather.lon===undefined?null:(Number.isFinite(Number(weather.lon))?Number(weather.lon):null);weather.locationLabel=cleanText(weather.locationLabel||'',80);}
+    if(weather){weather.lat=weather.lat===null||weather.lat===undefined?null:(Number.isFinite(Number(weather.lat))?Number(weather.lat):null);weather.lon=weather.lon===null||weather.lon===undefined?null:(Number.isFinite(Number(weather.lon))?Number(weather.lon):null);weather.locationLabel=cleanText(weather.locationLabel||'',80);weather.hourly=Array.isArray(raw.weather.hourly)?raw.weather.hourly.slice(0,168).filter(h=>h&&typeof h==='object'&&typeof h.startTime==='string').map(h=>({startTime:cleanText(h.startTime,40),windDirectionRaw:cleanText(h.windDirectionRaw||'',20),windSector:DIRECTIONS.includes(h.windSector)?h.windSector:null,windSpeedMinMph:h.windSpeedMinMph!==null&&h.windSpeedMinMph!==undefined&&Number.isFinite(Number(h.windSpeedMinMph))?Number(h.windSpeedMinMph):null,windSpeedMaxMph:h.windSpeedMaxMph!==null&&h.windSpeedMaxMph!==undefined&&Number.isFinite(Number(h.windSpeedMaxMph))?Number(h.windSpeedMaxMph):null,temperature:h.temperature!==null&&h.temperature!==undefined&&Number.isFinite(Number(h.temperature))?Number(h.temperature):null,temperatureUnit:cleanText(h.temperatureUnit||'F',2),summary:cleanText(h.summary||'',120),isDaytime:!!h.isDaytime})):[];}
     return {version:1,property,points,parcels,weather};
   }
   function loadState(){
@@ -157,13 +157,37 @@
     }
     $('advisor').textContent=message;
     renderScentControls();
+    renderHourlyReport();
   }
   function renderScentControls(){
     const windSelect=$('windStandSelect');if(windSelect){const selected=windSelect.value;windSelect.replaceChildren();const blank=document.createElement('option');blank.value='';blank.textContent='Choose a saved stand';windSelect.append(blank);for(const stand of state.points.filter(p=>p.type==='stand')){const option=document.createElement('option');option.value=stand.id;option.textContent=stand.name;windSelect.append(option);}if(selected)windSelect.value=selected;}
     const idealSelect=$('idealWindStandSelect');if(idealSelect){const keep=idealSelect.value;idealSelect.replaceChildren();const opt=document.createElement('option');opt.value='';opt.textContent='Choose a stand';idealSelect.append(opt);for(const stand of state.points.filter(p=>p.type==='stand')){const o=document.createElement('option');o.value=stand.id;o.textContent=stand.name;idealSelect.append(o);}if(keep)idealSelect.value=keep;}const select=$('scentStand');if(!select)return;const prior=select.value;select.replaceChildren();const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent='Choose a saved stand';select.append(placeholder);
     for(const stand of state.points.filter(p=>p.type==='stand')){const option=document.createElement('option');option.value=stand.id;option.textContent=stand.name;select.append(option);}if(prior)select.value=prior;
+    const hourly=$('hourlyStandSelect');if(hourly){const selected=hourly.value;hourly.replaceChildren();const blankHourly=document.createElement('option');blankHourly.value='';blankHourly.textContent='Choose a stand';hourly.append(blankHourly);for(const stand of state.points.filter(p=>p.type==='stand')){const opt=document.createElement('option');opt.value=stand.id;opt.textContent=stand.name;hourly.append(opt);}if(selected)hourly.value=selected;else if(state.points.some(p=>p.type==='stand'))hourly.value=state.points.find(p=>p.type==='stand').id;}
     if(!state.weather||!Number.isFinite(state.weather.windSpeedMinMph))$('scentStatus').textContent='Load a local forecast to provide wind speed for the plume.';
     else $('scentStatus').textContent='Choose a stand. A field-observed wind direction at that stand takes priority over the NWS regional direction.';
+  }
+  function renderHourlyReport(){
+    const root=$('hourlyWindReport');if(!root)return;root.replaceChildren();
+    const stand=state.points.find(p=>p.id===$('hourlyStandSelect')?.value&&p.type==='stand');
+    const periods=state.weather?.hourly||[];
+    if(!stand){root.textContent='Save a stand and choose it to see the hourly outlook.';return;}
+    if(!periods.length){root.textContent='No hourly forecast is saved yet. Refresh the forecast at this stand to load the next 24 hours.';return;}
+    if(!stand.winds?.length){root.textContent='Set Ideal Wind directions for this stand to calculate meaningful hourly scores.';return;}
+    const now=Date.now(),future=periods.filter(h=>Date.parse(h.startTime)>=now-30*60*1000).slice(0,168);
+    if(!future.length){root.textContent='The saved hourly forecast has expired. Refresh the forecast at this stand.';return;}
+    const scored=future.map(h=>{const score=!h.windSector?50:(stand.winds.includes(h.windSector)?100:0);return {...h,score};});
+    const avg=Math.round(scored.reduce((sum,h)=>sum+h.score,0)/scored.length),ideal=scored.filter(h=>h.score===100),best=ideal[0];const daily=new Map();for(const h of scored){const key=new Date(h.startTime).toLocaleDateString();if(!daily.has(key))daily.set(key,[]);daily.get(key).push(h);}
+    const summary=document.createElement('div');summary.className='row between';
+    const average=document.createElement('div');const big=document.createElement('div');big.className='metric';big.textContent=`${avg}/100`;const label=document.createElement('div');label.className='sub';label.textContent='Average score across available forecast hours';average.append(big,label);
+    const windows=document.createElement('div');windows.style.textAlign='right';const count=document.createElement('strong');count.textContent=`${ideal.length} of ${scored.length} hours`;const caption=document.createElement('div');caption.className='sub';caption.textContent='forecast as ideal';windows.append(count,caption);summary.append(average,windows);root.append(summary);
+    const dailyTitle=document.createElement('h3');dailyTitle.textContent='Seven-day outlook';dailyTitle.style.margin='12px 0 4px';root.append(dailyTitle);
+    const dailyScroll=document.createElement('div');dailyScroll.className='hourly-scroll';const dailyTable=document.createElement('table');dailyTable.className='hourly-table';const dailyHead=document.createElement('thead'),dailyHeadRow=document.createElement('tr');for(const title of ['Day','Avg score','Ideal hours']){const th=document.createElement('th');th.textContent=title;dailyHeadRow.append(th);}dailyHead.append(dailyHeadRow);dailyTable.append(dailyHead);const dailyBody=document.createElement('tbody');for(const [day,hours] of daily){const row=document.createElement('tr'),dayCell=document.createElement('td'),avgCell=document.createElement('td'),idealCell=document.createElement('td');dayCell.textContent=new Date(hours[0].startTime).toLocaleDateString([], {weekday:'short',month:'numeric',day:'numeric'});const dayScore=Math.round(hours.reduce((sum,h)=>sum+h.score,0)/hours.length);avgCell.textContent=`${dayScore}/100`;idealCell.textContent=`${hours.filter(h=>h.score===100).length}/${hours.length}`;row.append(dayCell,avgCell,idealCell);dailyBody.append(row);}dailyTable.append(dailyBody);dailyScroll.append(dailyTable);root.append(dailyScroll);
+    const hourlyTitle=document.createElement('h3');hourlyTitle.textContent='Next 24 hours · hour by hour';hourlyTitle.style.margin='14px 0 4px';root.append(hourlyTitle);
+    const next24=scored.slice(0,24);
+    const scroll=document.createElement('div');scroll.className='hourly-scroll';const table=document.createElement('table');table.className='hourly-table';const thead=document.createElement('thead'),head=document.createElement('tr');for(const title of ['Time','Wind FROM','Speed','Temp','Score']){const th=document.createElement('th');th.textContent=title;head.append(th);}thead.append(head);table.append(thead);const tbody=document.createElement('tbody');
+    for(const h of next24){const row=document.createElement('tr');row.className=h.score===100?'ideal-hour':h.score===0?'bad-hour':'';const time=new Date(h.startTime);const cells=[time.toLocaleString([], {weekday:'short',hour:'numeric'}),h.windDirectionRaw||'Variable',h.windSpeedMinMph===null?'—':`${Math.round(h.windSpeedMinMph)}–${Math.round(h.windSpeedMaxMph??h.windSpeedMinMph)} mph`,h.temperature===null?'—':`${Math.round(h.temperature)}°${h.temperatureUnit||'F'}`];for(const value of cells){const td=document.createElement('td');td.textContent=value;row.append(td);}const scoreCell=document.createElement('td');const badge=document.createElement('span');badge.className=`score-pill ${h.score===100?'good':h.score===0?'bad':'unknown'}`;badge.textContent=h.score===50?'50 · ?':`${h.score}`;scoreCell.append(badge);row.append(scoreCell);tbody.append(row);}table.append(tbody);scroll.append(table);root.append(scroll);
+    const bestNote=document.createElement('p');bestNote.className='sub';bestNote.textContent=best?`First ideal forecast hour: ${new Date(best.startTime).toLocaleString([], {weekday:'long',hour:'numeric',minute:'2-digit'})}. `:'No ideal-wind hours appear in this forecast window. ';bestNote.textContent+='Scores compare forecast wind direction with your saved Ideal Wind only; they are not deer-activity probabilities.';root.append(bestNote);
   }
   function compass16(deg){const labels=['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];return labels[Math.round(((deg%360)+360)%360/22.5)%16];}
   function bearingBetween(a,b){const p1=a.lat*Math.PI/180,p2=b.lat*Math.PI/180,dl=(b.lon-a.lon)*Math.PI/180,y=Math.sin(dl)*Math.cos(p2),x=Math.cos(p1)*Math.sin(p2)-Math.sin(p1)*Math.cos(p2)*Math.cos(dl);return (Math.atan2(y,x)*180/Math.PI+360)%360;}
@@ -254,6 +278,10 @@
       },{enableHighAccuracy:true,timeout:25000,maximumAge:0});
     });
   }
+  async function recenterMapToGPS(){
+    if(lastFix&&map)map.setView([lastFix.lat,lastFix.lon],17,{animate:false});
+    const button=$('recenterGpsBtn');await withGpsButton(button,async fix=>{if(map)map.setView([fix.lat,fix.lon],17,{animate:false});setStatus('mapStatus',`Map recentered on your live GPS fix (±${Math.round(fix.accuracy)} m). Browse anywhere, then tap LIVE GPS to snap back.`,fix.accuracy>100?'error':'success');});
+  }
   async function withGpsButton(button,action){button.disabled=true;const old=button.textContent;button.textContent='Getting GPS…';try{const fix=await getGPS();await action(fix);}catch(err){setStatus('gpsStatus',err.message,'error');showToast(err.message);}finally{button.disabled=false;button.textContent=old;}}
   function deletePoint(id){const next={...state,points:state.points.filter(p=>p.id!==id)};try{saveState(next);renderAll();showToast('Location deleted.');}catch(err){showToast(err.message);}}
   function updateProperty(fix){const next={...state,property:{name:$('propertyName').value.trim()||'My Property',lat:fix.lat,lon:fix.lon}};try{saveState(next);renderAll();showToast('Property center saved on this device.');}catch(err){showToast(err.message);}}
@@ -282,9 +310,10 @@
       if(!hourlyUrl)throw new Error('NWS did not provide an hourly forecast for this location.');
       const forecastResponse=await fetchWithTimeout(hourlyUrl,{headers:{Accept:'application/geo+json'}});
       if(!forecastResponse.ok)throw new Error(`NWS hourly forecast returned HTTP ${forecastResponse.status}.`);
-      const forecast=await forecastResponse.json(),period=forecast.properties?.periods?.[0];if(!period)throw new Error('NWS returned no hourly forecast periods.');
-      const speed=parseWindSpeed(period.windSpeed),sector=windSector(period.windDirection);
-      const next={...state,weather:{windSector:sector,windDirectionRaw:cleanText(period.windDirection,20),windSpeedMinMph:speed.min,windSpeedMaxMph:speed.max,temperature:cleanText(String(period.temperature??''),12),temperatureUnit:cleanText(period.temperatureUnit||'F',2),summary:cleanText(period.shortForecast||'',180),startTime:cleanText(period.startTime||'',40),fetchedAt:new Date().toISOString(),lat,lon,locationLabel:locationOverride?.label|| (locationOverride?.accuracy!==undefined?'Current GPS position':'Selected forecast point')}};
+      const forecast=await forecastResponse.json(),periods=(forecast.properties?.periods||[]).slice(0,168);if(!periods.length)throw new Error('NWS returned no hourly forecast periods.');
+      const hourly=periods.map(h=>{let speed=null;try{speed=parseWindSpeed(h.windSpeed);}catch(_){ }return {startTime:cleanText(h.startTime||'',40),windDirectionRaw:cleanText(h.windDirection||'',20),windSector:windSector(h.windDirection),windSpeedMinMph:speed?.min??null,windSpeedMaxMph:speed?.max??null,temperature:Number.isFinite(Number(h.temperature))?Number(h.temperature):null,temperatureUnit:cleanText(h.temperatureUnit||'F',2),summary:cleanText(h.shortForecast||'',120),isDaytime:!!h.isDaytime};}).filter(h=>h.startTime);
+      const first=hourly[0];const min=first.windSpeedMinMph??0,max=first.windSpeedMaxMph??min;
+      const next={...state,weather:{windSector:first.windSector,windDirectionRaw:first.windDirectionRaw,windSpeedMinMph:min,windSpeedMaxMph:max,temperature:first.temperature===null?'':String(first.temperature),temperatureUnit:first.temperatureUnit,summary:first.summary,startTime:first.startTime,hourly,fetchedAt:new Date().toISOString(),lat,lon,locationLabel:locationOverride?.label|| (locationOverride?.accuracy!==undefined?'Current GPS position':'Selected forecast point')}};
       saveState(next);renderAll();showToast('NWS forecast updated.');
     }catch(err){weatherRefreshFailed=true;const msg=err.name==='AbortError'?'The NWS request timed out. Try again when service is available.':`Forecast unavailable: ${err.message}`;setStatus('weatherSummary',msg,'error');renderAdvisor();showToast('Could not load the forecast.');}
     finally{$('weatherBtn').disabled=false;$('weatherBtn').textContent=old;}
@@ -321,6 +350,8 @@
   $('saveProperty').addEventListener('click',()=>withGpsButton($('saveProperty'),async fix=>updateProperty(fix)));
   $('savePoint').addEventListener('click',()=>withGpsButton($('savePoint'),async fix=>{try{savePoint(fix);}catch(err){showToast(err.message);}}));
   $('weatherBtn').addEventListener('click',loadWeather);
+  $('recenterGpsBtn').addEventListener('click',recenterMapToGPS);
+  $('hourlyStandSelect').addEventListener('change',renderHourlyReport);
   $('mapSearchBtn').addEventListener('click',searchMapPlace);$('mapSearch').addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();searchMapPlace();}});
   $('editIdealWindBtn').addEventListener('click',editIdealWind);$('saveIdealWindBtn').addEventListener('click',saveIdealWind);
   $('manualPointBtn').addEventListener('click',()=>{setMapMode('point');$('mapModeHelp').textContent='Tap the map where you want to place the location.';});

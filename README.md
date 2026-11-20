@@ -71,3 +71,11 @@ Saved property names, coordinates, notes, and wind settings stay in local browse
 - Stand markers now display green check (ideal), red alert (not ideal), or gray question mark (no current wind/rule).
 - Added an edit workflow for Ideal Wind on already-saved stands using the compass wheel; existing coordinates and other stand details remain unchanged.
 - The Ideal Wind Report compares the latest fresh regional NWS direction or a saved field observation against each stand's ideal directions. It is a current-condition comparison, not an hourly forecast report.
+
+## v0.7.0 — Hunt-day planning and live map recenter
+- Stores up to 168 hourly NWS forecast periods (up to seven days) for the forecast location selected by the hunter.
+- Adds a stand-specific seven-day Ideal Wind outlook and a next-24-hours, hour-by-hour score table.
+- Score definition is explicit: 100 when the forecast wind-from sector matches the stand's saved Ideal Wind, 0 when it does not, and 50 when direction is variable/unavailable. This is a rule-match score, not a probability of deer activity or harvest success.
+- Adds a LIVE GPS · RECENTER MAP button. It immediately snaps to the last known fix when available, then requests a fresh GPS fix and recenters again. It does not continuously track the hunter in the background.
+- For the most useful stand-specific report, refresh the forecast at that stand's coordinates. The forecast is still a modeled NWS grid forecast, not a field anemometer reading.
+- No storage key or existing point/parcel schema changed; hourly forecast data is additive and backups retain it.
