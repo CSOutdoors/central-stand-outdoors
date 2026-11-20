@@ -33,7 +33,7 @@ class FakeNode {
 }
 class FakeText { constructor(text){this.text=String(text);} get textContent(){return this.text;} }
 function makeHarness(options={}){
-  const ids=['connectionStatus','gpsStatus','propertyName','saveProperty','pointType','pointName','windChecks','pointNotes','savePoint','windValue','tempValue','weatherSummary','weatherBtn','pointList','storageStatus','map','mapFallback','mapStatus','advisor','toast','locateBtn','exportBtn','restoreFile','mapHeading','hourlyStandSelect','hourlyWindReport','recenterGpsBtn'];
+  const ids=['connectionStatus','gpsStatus','propertyName','saveProperty','pointType','pointName','windChecks','pointNotes','savePoint','windValue','tempValue','weatherSummary','weatherBtn','pointList','storageStatus','map','mapFallback','mapStatus','advisor','toast','locateBtn','mapHeading','hourlyStandSelect','hourlyWindReport','recenterGpsBtn'];
   const elements=Object.fromEntries(ids.map(id=>[id,new FakeNode()]));
   elements.pointType.value='stand';
   const body=new FakeNode('body');
@@ -69,26 +69,7 @@ function makeHarness(options={}){
   assert.match(reloaded.elements.pointList.textContent,/North Ridge/);
   passed.push('Reload simulation: saved stand is restored from browser storage');
 
-  await reloaded.elements.exportBtn.click();
-  const blob=reloaded.getLastBlob();assert(blob);
-  const backup=JSON.parse(await blob.text());
-  assert.equal(backup.schema,'cso-backup');assert.equal(backup.state.points[0].name,'North Ridge');
-  passed.push('Backup export: versioned JSON contains the saved location');
-
-  // Restore replaces the current set only after confirmation.
-  const second={schema:'cso-backup',version:1,state:{property:{name:'Test Farm',lat:40,lon:-89},points:[{id:'camera-1',name:'Camera One',type:'camera',lat:40.1,lon:-89.1,winds:[],notes:'',accuracy:8}],weather:null}};
-  reloaded.elements.restoreFile.files=[{size:100,text:async()=>JSON.stringify(second)}];
-  await reloaded.elements.restoreFile.dispatch('change');
-  saved=JSON.parse(reloaded.store.get('cso_gps_v4'));
-  assert.equal(saved.points.length,1);assert.equal(saved.points[0].name,'Camera One');assert.equal(saved.property.name,'Test Farm');
-  passed.push('Backup restore: validated restore replaces previous records');
-
-  const before=reloaded.store.get('cso_gps_v4');
-  reloaded.elements.restoreFile.files=[{size:100,text:async()=>JSON.stringify({schema:'cso-backup',version:1,state:{property:{},points:[{id:'bad',type:'stand',lat:999,lon:0}]}})}];
-  await reloaded.elements.restoreFile.dispatch('change');
-  assert.equal(reloaded.store.get('cso_gps_v4'),before);
-  assert.match(reloaded.elements.toast.textContent,/invalid location records/i);
-  passed.push('Invalid backup: out-of-range coordinates rejected without overwriting data');
+  passed.push('Local saved locations persist after reload without a backup workflow');
 
   const denied=makeHarness({geo:{getCurrentPosition:(ok,fail)=>fail({code:1})}});
   await denied.elements.locateBtn.click();
@@ -136,14 +117,6 @@ function makeHarness(options={}){
   assert.equal(JSON.parse(weak.store.get('cso_gps_v4')).points.length,1);
   passed.push('Weak GPS accuracy is disclosed while preserving the explicit save choice');
 
-  // User cancellation leaves existing records untouched.
-  const cancel=makeHarness({storage:Object.fromEntries(h.store),confirm:false});
-  const beforeCancel=cancel.store.get('cso_gps_v4');
-  cancel.elements.restoreFile.files=[{size:100,text:async()=>JSON.stringify(second)}];
-  await cancel.elements.restoreFile.dispatch('change');
-  assert.equal(cancel.store.get('cso_gps_v4'),beforeCancel);
-  passed.push('Restore confirmation cancellation leaves current data unchanged');
-
   // Duplicate identifiers in imported data are regenerated to preserve independent delete actions.
   const dup=makeHarness({storage:{cso_gps_v4:JSON.stringify({property:{},points:[{id:'same',name:'One',type:'stand',lat:40,lon:-89,winds:[]},{id:'same',name:'Two',type:'camera',lat:40.1,lon:-89.1,winds:[]}],weather:null})}});
   await dup.elements.pointList.children[0].children[3].children[1].click();
@@ -154,8 +127,13 @@ function makeHarness(options={}){
   // Old weather is displayed but not used to recommend a stand.
   const stale={cso_gps_v4:JSON.stringify({property:{},points:[{id:'s',name:'Stale Stand',type:'stand',lat:40,lon:-89,winds:['N']}],weather:{windSector:'N',windDirectionRaw:'N',windSpeedMinMph:5,windSpeedMaxMph:5,temperature:'40',temperatureUnit:'F',summary:'Clear',fetchedAt:'2020-01-01T00:00:00Z'}})};
   const staleHarness=makeHarness({storage:stale});
-  assert.match(staleHarness.elements.advisor.textContent,/older than 3 hours/i);
-  passed.push('Stale forecast (>3 hours) is not used for a wind recommendation');
+  assert.match(staleHarness.elements.advisor.textContent,/older than 3 hours/i);assert.equal(staleHarness.elements.todayStand.textContent,'Refresh your forecast');assert.equal(staleHarness.elements.todayScore.textContent,'—');
+  passed.push("Stale forecast (>3 hours) is not used for a wind recommendation or Today's Hunt score");
+
+  const noMatch={cso_gps_v4:JSON.stringify({property:{},points:[{id:'nm',name:'South Stand',type:'stand',lat:40,lon:-89,winds:['S']}],weather:{windSector:'N',windDirectionRaw:'N',windSpeedMinMph:5,windSpeedMaxMph:5,temperature:'40',temperatureUnit:'F',summary:'Clear',fetchedAt:new Date().toISOString(),hourly:[{startTime:new Date(Date.now()+3600000).toISOString(),windDirectionRaw:'N',windSector:'N',windSpeedMinMph:5,windSpeedMaxMph:5,temperature:40,temperatureUnit:'F'}]}})};
+  const noMatchHarness=makeHarness({storage:noMatch});
+  assert.equal(noMatchHarness.elements.todayStand.textContent,'No ideal-wind window');assert.equal(noMatchHarness.elements.huntViewStandBtn.disabled,true);
+  passed.push('Today’s Hunt does not recommend a stand when no upcoming forecast hour matches its Ideal Wind');
 
   // XSS regression: imported names remain literal text in the DOM.
   const xss={cso_gps_v4:JSON.stringify({property:{},points:[{id:'x',name:'<img src=x onerror=alert(1)>',type:'stand',lat:40,lon:-89,winds:[],notes:'',accuracy:5}],weather:null})};
@@ -169,12 +147,14 @@ function makeHarness(options={}){
   const weather=makeHarness({fetch:weatherFetch});
   weather.elements.pointName.value='NE Stand';
   await weather.elements.windChecks.children.find(button=>button.dataset?.direction==='NE').click();
+  await weather.elements.windChecks.children.find(button=>button.dataset?.direction==='SE').click();
   await weather.elements.savePoint.click();
   await weather.elements.weatherBtn.click();
   const wstate=JSON.parse(weather.store.get('cso_gps_v4'));
   assert.equal(wstate.weather.windSector,'NE');assert.equal(wstate.weather.windSpeedMinMph,5);assert.equal(wstate.weather.windSpeedMaxMph,10);assert.equal(wstate.weather.hourly.length,2);assert.equal(wstate.weather.hourly[1].windSector,'SE');
-  assert.match(weather.elements.advisor.textContent,/Safe-wind match: NE Stand/);assert.match(weather.elements.hourlyWindReport.textContent,/Next 24 hours/);assert.match(weather.elements.hourlyWindReport.textContent,/50\/100/);
-  passed.push('NWS hourly forecast: 2 hourly periods persisted; NNE-to-NE sector normalized and hourly data retained');
+  assert.match(weather.elements.advisor.textContent,/Safe-wind match: NE Stand/);assert.match(weather.elements.hourlyWindReport.textContent,/Next 24 hours/);assert.match(weather.elements.hourlyWindReport.textContent,/100\/100/);
+  assert.equal(weather.elements.todayStand.textContent,'NE Stand');assert.equal(weather.elements.todayScore.textContent,'100/100');assert.match(weather.elements.todayReason.textContent,/matches this stand’s Ideal Wind/);
+  passed.push("NWS hourly forecast: 2 periods persisted; NNE-to-NE normalized; Today's Hunt ranks matching stand");
 
   const variableFetch=async url=> url.includes('/points/')?{ok:true,json:async()=>({properties:{forecastHourly:'https://api.weather.gov/hourly'}})}:{ok:true,json:async()=>({properties:{periods:[{windSpeed:'0 mph',windDirection:'Variable',temperature:41,temperatureUnit:'F',shortForecast:'Cloudy',startTime:'2026-11-19T17:00:00-06:00'}]}})};
   const variable=makeHarness({fetch:variableFetch});variable.elements.pointName.value='Stand';

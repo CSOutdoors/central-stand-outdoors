@@ -7,6 +7,7 @@
   const TYPES = {stand:'Stand',camera:'Camera',food:'Food Plot',access:'Access Point',sighting:'Deer Sighting'};
   const state = {version:1,property:{name:'',lat:null,lon:null},points:[],parcels:[],weather:null};
   let map = null, markers = {}, mapLayers = {}, gpsMarker = null, accuracyCircle = null, scentLayers = [], scentFrame = 0, lastFix = null, toastTimer = null, mapCentered = false, weatherRefreshFailed = false, scentVisible = false, mapMode = 'idle', pendingMapPoint = null, boundaryVertices = [], boundaryPreview = null, boundaryLayers = [];
+  let todayRecommendedStandId = null;
   const selectedWindDirs = new Set();
 
   function newId(){
@@ -63,7 +64,7 @@
   function saveState(next){
     const normalized=normalizeState(next);
     try{localStorage.setItem(STORAGE_KEY,JSON.stringify(normalized));}
-    catch(err){throw new Error(err&&err.name==='QuotaExceededError'?'Device storage is full. Export a backup and remove unneeded data.':'Browser storage is unavailable. Check Safari privacy settings and try again.');}
+    catch(err){throw new Error(err&&err.name==='QuotaExceededError'?'Device storage is full. Remove unneeded saved locations and try again.':'Browser storage is unavailable. Check Safari privacy settings and try again.');}
     Object.assign(state,normalized);
   }
   function showToast(message){const el=$('toast');el.textContent=message;el.style.display='block';clearTimeout(toastTimer);toastTimer=setTimeout(()=>{el.style.display='none';},3200);}
@@ -134,6 +135,80 @@
     $('windValue').textContent=w.windDirectionRaw?`${w.windDirectionRaw} · ${Math.round(w.windSpeedMinMph)}–${Math.round(w.windSpeedMaxMph)} mph`:'Variable wind';
     $('tempValue').textContent=w.temperature?`${w.temperature}°${w.temperatureUnit}`:'—';
     $('weatherSummary').textContent=`${w.summary||'Forecast loaded'}${w.locationLabel?' · '+w.locationLabel:''}${w.startTime?' · '+w.startTime:''}${w.fetchedAt?' · Updated '+new Date(w.fetchedAt).toLocaleString():''}`;
+  }
+  function renderTodayHunt(){
+    const now=new Date();
+    $('todayDate').textContent=now.toLocaleDateString([], {weekday:'long',month:'long',day:'numeric'});
+    const weather=state.weather;
+    const age=weather?.fetchedAt?Date.now()-Date.parse(weather.fetchedAt):Infinity;
+    const fresh=!!weather&&!weatherRefreshFailed&&Number.isFinite(age)&&age>=0&&age<=3*60*60*1000;
+    $('todayForecastBadge').textContent=!weather?'FORECAST NEEDED':fresh?'FORECAST FRESH':'REFRESH NEEDED';
+    $('todayForecastBadge').classList.toggle('fresh',fresh);
+    $('todayForecastBadge').classList.toggle('stale',!!weather&&!fresh);
+    $('todayScore').classList.toggle('good',false);$('todayScore').classList.toggle('bad',false);$('todayScore').classList.toggle('unknown',false);
+    $('todayWind').textContent=weather?(weather.windDirectionRaw?`${weather.windDirectionRaw} · ${Math.round(weather.windSpeedMinMph)}–${Math.round(weather.windSpeedMaxMph)} mph`:'Variable'):'—';
+    $('todayTemp').textContent=weather&&weather.temperature!==''?`${weather.temperature}°${weather.temperatureUnit}`:'—';
+    $('todayUpdated').textContent=weather?.fetchedAt?new Date(weather.fetchedAt).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}):'—';
+    const stands=state.points.filter(p=>p.type==='stand');
+    const periods=(weather?.hourly||[]).filter(h=>Date.parse(h.startTime)>=Date.now()-30*60*1000).slice(0,24);
+    const configured=stands.filter(s=>Array.isArray(s.winds)&&s.winds.length>0);
+    let ranked=[];
+    if(fresh&&periods.length){
+      ranked=configured.map(stand=>{
+        const scored=periods.map(h=>({...h,score:!h.windSector?50:(stand.winds.includes(h.windSector)?100:0)}));
+        const average=Math.round(scored.reduce((sum,h)=>sum+h.score,0)/scored.length);
+        const idealHours=scored.filter(h=>h.score===100).length;
+        let bestRun=0,run=0,runStart=null,bestStart=null,bestEnd=null;
+        for(const h of scored){if(h.score===100){if(run===0)runStart=h.startTime;run++;if(run>bestRun){bestRun=run;bestStart=runStart;bestEnd=h.startTime;}}else run=0;}
+        return {stand,scored,average,idealHours,bestRun,bestStart,bestEnd};
+      }).sort((x,y)=>y.average-x.average||y.idealHours-x.idealHours||y.bestRun-x.bestRun);
+    }
+    const topCandidate=ranked[0]||null;
+    const best=topCandidate&&topCandidate.idealHours>0?topCandidate:null;
+    todayRecommendedStandId=best?.stand.id||null;
+    $('huntViewStandBtn').disabled=!best;
+    if(!stands.length){
+      $('todayStand').textContent='Add your first stand';$('todayScore').textContent='—';$('todayReason').textContent='Save a stand to let CSO compare hunting locations.';$('todayStatus').textContent='Start by saving a tree stand or blind. Your locations stay on this device.';
+    }else if(!weather){
+      $('todayStand').textContent='Forecast needed';$('todayScore').textContent='—';$('todayReason').textContent='Refresh conditions to compare your stands against the hourly wind forecast.';$('todayStatus').textContent='Scores are wind-rule matches, not predictions of deer activity or harvest success.';
+    }else if(!fresh){
+      $('todayStand').textContent='Refresh your forecast';$('todayScore').textContent='—';$('todayReason').textContent=weatherRefreshFailed?'The latest weather request failed. Try again when you have service.':'The saved forecast is more than three hours old. Refresh before relying on a recommendation.';$('todayStatus').textContent='CSO will not use stale forecast data to recommend a stand.';
+    }else if(!periods.length){
+      $('todayStand').textContent='Hourly outlook unavailable';$('todayScore').textContent='—';$('todayReason').textContent='Refresh the forecast at a stand to load upcoming hourly conditions.';$('todayStatus').textContent='The current forecast did not include usable upcoming hourly periods.';
+    }else if(!configured.length){
+      $('todayStand').textContent='Set Ideal Wind first';$('todayScore').textContent='—';$('todayReason').textContent='Your stands are saved, but none has Ideal Wind directions yet. Set them in Map tools.';$('todayStatus').textContent='A stand needs at least one saved Ideal Wind direction before CSO can rank it.';
+    }else if(best){
+      $('todayStand').textContent=best.stand.name;$('todayScore').textContent=`${best.average}/100`;
+      let reason=`Forecast wind matches this stand’s Ideal Wind for ${best.idealHours} of ${best.scored.length} upcoming hours.`;
+      if(best.bestRun>=2){const start=new Date(best.bestStart),end=new Date(Date.parse(best.bestEnd)+60*60*1000);reason+=` Best stretch: ${start.toLocaleTimeString([], {hour:'numeric'})}–${end.toLocaleTimeString([], {hour:'numeric'} )}.`;}
+      $('todayReason').textContent=reason;
+      $('todayStatus').textContent=`Forecast location: ${weather.locationLabel||'saved forecast point'}. Scores compare forecast wind direction with saved Ideal Wind only. Field conditions may differ.`;
+    }else if(topCandidate){
+      $('todayStand').textContent=topCandidate.idealHours===0?'No ideal-wind window':'Wind direction uncertain';
+      $('todayScore').textContent=`${topCandidate.average}/100`;$('todayScore').classList.add(topCandidate.average===0?'bad':'unknown');
+      $('todayReason').textContent=topCandidate.idealHours===0?`Forecast wind does not match any saved Ideal Wind direction for ${topCandidate.stand.name} in the next 24 hours.`:`The hourly forecast is too variable to identify a reliable stand. Top candidate: ${topCandidate.stand.name}.`;
+      $('todayStatus').textContent='No stand is recommended. Check the on-site wind before deciding where to hunt.';
+    }
+    $('todayHours').replaceChildren();
+    const hoursToShow=periods.slice(0,6);
+    if(!hoursToShow.length){const empty=document.createElement('div');empty.className='sub';empty.textContent='Refresh conditions to see hourly wind.';$('todayHours').append(empty);}
+    else for(const h of hoursToShow){
+      const chipStand=best||topCandidate;
+      const score=chipStand?(chipStand.stand.winds.includes(h.windSector)?100:(!h.windSector?50:0)):50;
+      const chip=document.createElement('div');chip.className=`hour-chip ${score===100?'ideal':score===0?'poor':'unknown'}`;
+      const time=document.createElement('strong');time.textContent=new Date(h.startTime).toLocaleTimeString([], {hour:'numeric'});
+      const wind=document.createElement('span');wind.textContent=h.windDirectionRaw||'Variable';
+      const badge=document.createElement('em');badge.textContent=chipStand?(score===50?'?':`${score}`):'—';
+      chip.append(time,wind,badge);$('todayHours').append(chip);
+    }
+    $('todayHoursCaption').textContent=best?`${best.idealHours} ideal hours · next 24h`:topCandidate?'Top stand · next 24h':'Wind FROM · hourly forecast';
+  }
+  function focusRecommendedStand(){
+    const stand=state.points.find(p=>p.id===todayRecommendedStandId);
+    if(!stand){showToast('No recommended stand is available yet.');return;}
+    if(map){map.setView([stand.lat,stand.lon],17);const marker=markers[stand.id];if(marker)marker.openPopup();}
+    $('map').scrollIntoView({behavior:'smooth',block:'center'});
+    setStatus('mapStatus',`Showing recommended stand: ${stand.name}.`,'success');
   }
   function renderAdvisor(){
     const stands=state.points.filter(p=>p.type==='stand');let message='';
@@ -250,7 +325,7 @@
     }catch(err){showToast(err.name==='TimeoutError'?'Place search timed out. Try again.':err.message||'Place search failed.');}
     finally{button.disabled=false;button.textContent='Find on map';}
   }
-  function renderAll(){renderList();renderWeather();renderAdvisor();draw();if(map&&!mapCentered){const target=state.property.lat!==null?[state.property.lat,state.property.lon]:(state.points[0]?[state.points[0].lat,state.points[0].lon]:null);if(target){map.setView(target,14);mapCentered=true;}}}
+  function renderAll(){renderList();renderWeather();renderAdvisor();renderTodayHunt();draw();if(map&&!mapCentered){const target=state.property.lat!==null?[state.property.lat,state.property.lon]:(state.points[0]?[state.points[0].lat,state.points[0].lon]:null);if(target){map.setView(target,14);mapCentered=true;}}}
   function windSector(direction){
     const degrees={N:0,NNE:22.5,NE:45,ENE:67.5,E:90,ESE:112.5,SE:135,SSE:157.5,S:180,SSW:202.5,SW:225,WSW:247.5,W:270,WNW:292.5,NW:315,NNW:337.5};
     if(!Object.hasOwn(degrees,direction))return null;
@@ -315,29 +390,8 @@
       const first=hourly[0];const min=first.windSpeedMinMph??0,max=first.windSpeedMaxMph??min;
       const next={...state,weather:{windSector:first.windSector,windDirectionRaw:first.windDirectionRaw,windSpeedMinMph:min,windSpeedMaxMph:max,temperature:first.temperature===null?'':String(first.temperature),temperatureUnit:first.temperatureUnit,summary:first.summary,startTime:first.startTime,hourly,fetchedAt:new Date().toISOString(),lat,lon,locationLabel:locationOverride?.label|| (locationOverride?.accuracy!==undefined?'Current GPS position':'Selected forecast point')}};
       saveState(next);renderAll();showToast('NWS forecast updated.');
-    }catch(err){weatherRefreshFailed=true;const msg=err.name==='AbortError'?'The NWS request timed out. Try again when service is available.':`Forecast unavailable: ${err.message}`;setStatus('weatherSummary',msg,'error');renderAdvisor();showToast('Could not load the forecast.');}
+    }catch(err){weatherRefreshFailed=true;const msg=err.name==='AbortError'?'The NWS request timed out. Try again when service is available.':`Forecast unavailable: ${err.message}`;setStatus('weatherSummary',msg,'error');renderAdvisor();renderTodayHunt();showToast('Could not load the forecast.');}
     finally{$('weatherBtn').disabled=false;$('weatherBtn').textContent=old;}
-  }
-  function exportBackup(){
-    const payload={schema:'cso-backup',version:1,exportedAt:new Date().toISOString(),state:normalizeState(state)};
-    const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');
-    a.href=url;a.download=`cso-backup-${new Date().toISOString().slice(0,10)}.json`;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500);showToast('Backup file prepared. Keep it somewhere private.');
-  }
-  async function restoreBackup(file){
-    if(!file)return;
-    try{
-      if(file.size>5*1024*1024)throw new Error('Backup file is larger than 5 MB.');
-      const parsed=JSON.parse(await file.text());
-      if(parsed.schema&&parsed.schema!=='cso-backup')throw new Error('This file is not a recognized CSO backup.');
-      if(parsed.schema==='cso-backup'&&parsed.version!==1)throw new Error('This backup version is not supported by this app.');
-      const rawState=parsed.schema==='cso-backup'?parsed.state:parsed;
-      if(!rawState||typeof rawState!=='object'||!Array.isArray(rawState.points))throw new Error('Backup is missing its saved locations list.');
-      const candidate=normalizeState(rawState);
-      if(candidate.points.length!==rawState.points.length)throw new Error('Backup contains invalid location records. Nothing was restored.');
-      if(!confirm(`Restore ${candidate.points.length} location(s) and replace the data currently saved in this browser? Export your current data first if you want to keep it.`))return;
-      saveState(candidate);$('propertyName').value=state.property.name;mapCentered=false;renderAll();showToast(`Restored ${state.points.length} location(s).`);
-    }catch(err){showToast(`Restore failed: ${err.message}`);}
-    finally{$('restoreFile').value='';}
   }
   function updateConnection(){const online=navigator.onLine;$('connectionStatus').textContent=online?'ONLINE':'OFFLINE · saved data available';$('connectionStatus').classList.toggle('bad',!online);if(!online)setStatus('mapStatus','You are offline. Saved data works; live map tiles and NWS forecasts need internet.','error');else if(map)setStatus('mapStatus','Online · Street names and satellite map layers load from the internet.','');}
   function registerWorker(){if('serviceWorker'in navigator&&window.isSecureContext){navigator.serviceWorker.register('./sw.js').catch(err=>setStatus('mapStatus','Offline app-shell setup failed: '+err.message,'error'));}}
@@ -350,6 +404,8 @@
   $('saveProperty').addEventListener('click',()=>withGpsButton($('saveProperty'),async fix=>updateProperty(fix)));
   $('savePoint').addEventListener('click',()=>withGpsButton($('savePoint'),async fix=>{try{savePoint(fix);}catch(err){showToast(err.message);}}));
   $('weatherBtn').addEventListener('click',loadWeather);
+  $('huntRefreshBtn').addEventListener('click',()=>$('weatherBtn').click());
+  $('huntViewStandBtn').addEventListener('click',focusRecommendedStand);
   $('recenterGpsBtn').addEventListener('click',recenterMapToGPS);
   $('hourlyStandSelect').addEventListener('change',renderHourlyReport);
   $('mapSearchBtn').addEventListener('click',searchMapPlace);$('mapSearch').addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();searchMapPlace();}});
@@ -364,8 +420,6 @@
   $('gpsForecastBtn').addEventListener('click',()=>withGpsButton($('gpsForecastBtn'),async fix=>loadWeather({...fix,label:'Current GPS position'}))); 
   $('scentToggle').addEventListener('click',()=>{scentVisible=!scentVisible;$('scentToggle').textContent=scentVisible?'Hide scent plume':'Show scent plume';$('scentToggle').setAttribute('aria-pressed',String(scentVisible));if(scentVisible)drawScent();else{clearScent();setStatus('scentStatus','Scent plume hidden.','');}});
   $('scentStand').addEventListener('change',()=>{if(scentVisible)drawScent();});
-  $('exportBtn').addEventListener('click',exportBackup);
-  $('restoreFile').addEventListener('change',event=>restoreBackup(event.target.files?.[0]));
   window.addEventListener('online',updateConnection);window.addEventListener('offline',updateConnection);
   if('serviceWorker'in navigator)navigator.serviceWorker.addEventListener('controllerchange',()=>showToast('CSO offline app shell updated.'));
   registerWorker();
