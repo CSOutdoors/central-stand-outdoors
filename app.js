@@ -6,7 +6,7 @@
   const DIRECTIONS = ['N','NE','E','SE','S','SW','W','NW'];
   const TYPES = {stand:'Stand',camera:'Camera',food:'Food Plot',access:'Access Point',sighting:'Deer Sighting'};
   const state = {version:1,property:{name:'',lat:null,lon:null},points:[],weather:null};
-  let map = null, markers = {}, gpsMarker = null, accuracyCircle = null, lastFix = null, toastTimer = null, mapCentered = false, weatherRefreshFailed = false;
+  let map = null, markers = {}, gpsMarker = null, accuracyCircle = null, scentLayers = [], lastFix = null, toastTimer = null, mapCentered = false, weatherRefreshFailed = false, scentVisible = false;
 
   function newId(){
     if (crypto && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
@@ -110,13 +110,39 @@
   }
   function renderAdvisor(){
     const stands=state.points.filter(p=>p.type==='stand');let message='';
+    const ranked=$('rankedStands');ranked.replaceChildren();
     if(!stands.length)message='Save a tree stand or blind with GPS to start.';
-    else if(!state.weather)message='Your stands are saved. Load a forecast to compare wind direction with each stand’s configured safe-wind directions.';
-    else if(weatherRefreshFailed)message='The latest NWS refresh failed. The saved forecast may be outdated; retry before relying on a wind recommendation.';
-    else if(!state.weather.fetchedAt||!Number.isFinite(Date.parse(state.weather.fetchedAt))||Date.now()-Date.parse(state.weather.fetchedAt)>3*60*60*1000)message='The saved weather forecast is older than 3 hours or has no valid timestamp. Refresh the forecast before using a wind recommendation.';
-    else if(!state.weather.windSector)message='The NWS forecast reports variable or unsupported wind direction. No stand match is calculated; check conditions locally.';
-    else{const matches=stands.filter(s=>s.winds.includes(state.weather.windSector));message=`Forecast wind FROM ${state.weather.windSector}, ${Math.round(state.weather.windSpeedMinMph)}–${Math.round(state.weather.windSpeedMaxMph)} mph. `+(matches.length?`Configured wind match: ${matches.map(s=>s.name).join(', ')}.`:'No stand matches this configured wind direction.')+' Verify wind at stand height and account for access, terrain, and thermals.';}
+    else if(!state.weather)message='Your stands are saved. Load a forecast to rank them against their configured safe-wind directions.';
+    else if(weatherRefreshFailed)message='The latest NWS refresh failed. The saved forecast may be outdated; retry before relying on a recommendation.';
+    else if(!state.weather.fetchedAt||!Number.isFinite(Date.parse(state.weather.fetchedAt))||Date.now()-Date.parse(state.weather.fetchedAt)>3*60*60*1000)message='The saved forecast is older than 3 hours. Refresh before using a wind recommendation.';
+    else if(!state.weather.windSector)message='The NWS forecast reports variable or unsupported wind direction. No stand ranking is calculated.';
+    else {
+      const sorted=stands.map(s=>({stand:s,match:s.winds.includes(state.weather.windSector),configured:s.winds.length>0})).sort((a,b)=>Number(b.match)-Number(a.match)||Number(b.configured)-Number(a.configured));
+      const matches=sorted.filter(x=>x.match);
+      message=`Regional forecast: wind FROM ${state.weather.windSector}, ${Math.round(state.weather.windSpeedMinMph)}–${Math.round(state.weather.windSpeedMaxMph)} mph. ${matches.length?`Configured wind match: ${matches.map(x=>x.stand.name).join(', ')}.`:'No stand matches this wind direction.'} This is a wind-rule comparison, not a deer-activity prediction.`;
+      for(const [i,item] of sorted.entries()){
+        const row=document.createElement('div');row.className='rank-item';const label=document.createElement('div');const name=document.createElement('strong');name.textContent=`${i+1}. ${item.stand.name}`;const detail=document.createElement('div');detail.className='itemmeta';detail.textContent=item.match?`Wind match · wind FROM ${state.weather.windSector}`:item.configured?'No match for current wind':'No safe-wind settings entered';label.append(name,detail);const score=document.createElement('div');score.className='rank-score';score.textContent=item.match?'✓':'—';score.setAttribute('aria-label',item.match?'Wind match':'No match');row.append(label,score);ranked.append(row);
+      }
+    }
     $('advisor').textContent=message;
+    renderScentControls();
+  }
+  function renderScentControls(){
+    const select=$('scentStand');if(!select)return;const prior=select.value;select.replaceChildren();const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent='Choose a saved stand';select.append(placeholder);
+    for(const stand of state.points.filter(p=>p.type==='stand')){const option=document.createElement('option');option.value=stand.id;option.textContent=stand.name;select.append(option);}if(prior)select.value=prior;
+    if(!state.weather)$('scentStatus').textContent='Load a forecast to calculate the downwind direction.';
+    else if(!state.weather.windSector)$('scentStatus').textContent='Wind direction is variable or unavailable; no scent projection can be drawn.';
+    else $('scentStatus').textContent=`Forecast wind FROM ${state.weather.windSector} at ${Math.round(state.weather.windSpeedMinMph)}–${Math.round(state.weather.windSpeedMaxMph)} mph. Choose a stand, then show the conceptual plume.`;
+  }
+  function destination(lat,lon,bearingDeg,distanceM){const R=6371000,b=bearingDeg*Math.PI/180,p1=lat*Math.PI/180,l1=lon*Math.PI/180,d=distanceM/R;const p2=Math.asin(Math.sin(p1)*Math.cos(d)+Math.cos(p1)*Math.sin(d)*Math.cos(b));const l2=l1+Math.atan2(Math.sin(b)*Math.sin(d)*Math.cos(p1),Math.cos(d)-Math.sin(p1)*Math.sin(p2));return [p2*180/Math.PI,((l2*180/Math.PI+540)%360)-180];}
+  function clearScent(){scentLayers.forEach(layer=>{if(map)map.removeLayer(layer);});scentLayers=[];}
+  function drawScent(){
+    clearScent();const id=$('scentStand').value,stand=state.points.find(p=>p.id===id);if(!stand||!state.weather?.windSector){setStatus('scentStatus','Choose a stand and load a valid wind forecast first.','error');return;}
+    const from=DIRECTIONS.indexOf(state.weather.windSector)*45,to=(from+180)%360,speed=(state.weather.windSpeedMinMph+state.weather.windSpeedMaxMph)/2;
+    const length=Math.max(100,Math.min(600,180+speed*18));const spread=Math.max(18,Math.min(42,24+speed*.7));
+    const left=destination(stand.lat,stand.lon,to-spread,length),tip=destination(stand.lat,stand.lon,to,length),right=destination(stand.lat,stand.lon,to+spread,length);
+    if(map){const plume=L.polygon([[stand.lat,stand.lon],left,tip,right],{color:'#e18a38',weight:2,fillColor:'#e18a38',fillOpacity:.24,dashArray:'5 5'}).addTo(map);const axis=L.polyline([[stand.lat,stand.lon],tip],{color:'#ffd08b',weight:2,dashArray:'7 7'}).addTo(map);const marker=L.circleMarker([stand.lat,stand.lon],{radius:7,color:'#fff',weight:2,fillColor:'#87bd8d',fillOpacity:1}).addTo(map).bindPopup(`${stand.name} · scent source`);scentLayers.push(plume,axis,marker);map.fitBounds(plume.getBounds().pad(.45));}
+    const toDir=DIRECTIONS[Math.round(to/45)%8];setStatus('scentStatus',`Estimated plume travels generally ${toDir} from ${stand.name}. Forecast wind FROM ${state.weather.windSector}; illustrative length ${Math.round(length)} m. Actual scent travel can vary substantially.`,'success');
   }
   function renderAll(){renderList();renderWeather();renderAdvisor();draw();if(map&&!mapCentered){const target=state.property.lat!==null?[state.property.lat,state.property.lon]:(state.points[0]?[state.points[0].lat,state.points[0].lon]:null);if(target){map.setView(target,14);mapCentered=true;}}}
   function windSector(direction){
@@ -209,6 +235,8 @@
   $('saveProperty').addEventListener('click',()=>withGpsButton($('saveProperty'),async fix=>updateProperty(fix)));
   $('savePoint').addEventListener('click',()=>withGpsButton($('savePoint'),async fix=>{try{savePoint(fix);}catch(err){showToast(err.message);}}));
   $('weatherBtn').addEventListener('click',loadWeather);
+  $('scentToggle').addEventListener('click',()=>{scentVisible=!scentVisible;$('scentToggle').textContent=scentVisible?'Hide scent plume':'Show scent plume';$('scentToggle').setAttribute('aria-pressed',String(scentVisible));if(scentVisible)drawScent();else{clearScent();setStatus('scentStatus','Scent plume hidden.','');}});
+  $('scentStand').addEventListener('change',()=>{if(scentVisible)drawScent();});
   $('exportBtn').addEventListener('click',exportBackup);
   $('restoreFile').addEventListener('change',event=>restoreBackup(event.target.files?.[0]));
   window.addEventListener('online',updateConnection);window.addEventListener('offline',updateConnection);
