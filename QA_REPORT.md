@@ -1,4 +1,4 @@
-# CSO v0.5.0 — QA report
+# CSO v0.5.1 — QA report
 
 **Date:** 2026-11-19  
 **Scope:** Existing v0.4.1 GPS-first PWA plus first ScentCast / Hunt Decision Foundation increment.
@@ -8,9 +8,11 @@
 - Added conceptual downwind fan and centerline overlay on the Leaflet property map.
 - Wind FROM is converted to the opposite downwind bearing for the visual projection.
 - Added an explicit explanation of forecast source, estimated direction, and illustrative length.
+- Added subtle CSS animation: the plume gently pulses and the centerline dash pattern drifts downwind. Reduced-motion preferences are respected.
+- Updated service-worker cache to v0.5.1 so installed PWAs can detect the new shell.
 - Added Today's Hunt stand ranking based on configured safe-wind directions and the latest forecast.
 - Retained stale forecast and variable wind safeguards.
-- Bumped service-worker cache version to v0.5.0.
+- Bumped service-worker cache version from v0.5.0 to v0.5.1.
 
 ## Automated validation
 - JavaScript syntax check: passed.
@@ -19,7 +21,7 @@
 - Static checks: passed (unique IDs, button types, CSP, PWA shell, safe DOM rendering, GPS/NWS/USGS wiring).
 
 ## Not yet validated
-- ScentCast map geometry on an actual iPhone / Leaflet map.
+- ScentCast map geometry and animation performance on an actual iPhone / Leaflet map.
 - Accuracy of regional forecast wind at a specific stand.
 - Terrain, thermal, canopy, turbulence, and vegetation effects.
 - Real deer movement prediction or AI model performance.
