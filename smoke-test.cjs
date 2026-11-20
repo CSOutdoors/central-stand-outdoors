@@ -153,7 +153,7 @@ function makeHarness(options={}){
   const wstate=JSON.parse(weather.store.get('cso_gps_v4'));
   assert.equal(wstate.weather.windSector,'NE');assert.equal(wstate.weather.windSpeedMinMph,5);assert.equal(wstate.weather.windSpeedMaxMph,10);assert.equal(wstate.weather.hourly.length,2);assert.equal(wstate.weather.hourly[1].windSector,'SE');
   assert.match(weather.elements.advisor.textContent,/Safe-wind match: NE Stand/);assert.match(weather.elements.hourlyWindReport.textContent,/Next 24 hours/);assert.match(weather.elements.hourlyWindReport.textContent,/100\/100/);
-  assert.equal(weather.elements.todayStand.textContent,'NE Stand');assert.equal(weather.elements.todayScore.textContent,'100/100');assert.match(weather.elements.todayReason.textContent,/matches this stand’s Ideal Wind/);
+  assert.equal(weather.elements.todayStand.textContent,'NE Stand');assert.match(weather.elements.todayScore.textContent,/^\d{2,3}\/100$/);assert.match(weather.elements.todayReason.textContent,/CSO suitability index/);assert.match(weather.elements.huntAdvisorInsight.textContent,/Score factors/);
   passed.push("NWS hourly forecast: 2 periods persisted; NNE-to-NE normalized; Today's Hunt ranks matching stand");
 
   const variableFetch=async url=> url.includes('/points/')?{ok:true,json:async()=>({properties:{forecastHourly:'https://api.weather.gov/hourly'}})}:{ok:true,json:async()=>({properties:{periods:[{windSpeed:'0 mph',windDirection:'Variable',temperature:41,temperatureUnit:'F',shortForecast:'Cloudy',startTime:'2026-11-19T17:00:00-06:00'}]}})};

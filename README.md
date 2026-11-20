@@ -1,22 +1,27 @@
-# Central Stand Outdoors — Today's Hunt v0.8.0 (local-only)
+# Central Stand Outdoors — Intelligent Hunt Advisor v0.8.1 (local-only)
 
-## What's new in v0.8.0
-- Adds a clean Today's Hunt briefing as the first screen: current saved forecast wind, temperature, forecast freshness, best stand, hourly wind-match score, and the next six hourly conditions.
-- Ranks stands across the next 24 forecast hours using the user's saved Ideal Wind directions. Ranking uses average hourly wind-match score, ideal-hour count, and best consecutive ideal stretch.
-- Adds a one-tap action to jump to the recommended stand on the map.
-- Keeps advanced wind reports, map tools, GPS/property setup, location management, scent visualization, weather details, and privacy information in collapsed sections.
-- Cloud synchronization remains OFF. No Supabase or account setup is required.
-- Preserves the existing `cso_gps_v4` local storage key and saved-data schema.
+## What's new in v0.8.1
+- Adds a transparent local Hunt Advisor suitability index for each saved stand across the next 24 forecast hours.
+- Explains the leading stand and shows how its score was built: Ideal Wind alignment (65 points), wind-speed suitability (10), temperature context (15), and precipitation probability (10).
+- Uses National Weather Service hourly precipitation probability when supplied; missing values receive a neutral score rather than being treated as zero precipitation.
+- Hourly dashboard chips now display the broader suitability score. Existing hourly wind-only reports remain available for direct Ideal Wind comparisons.
+- Preserves the existing local storage key (`cso_gps_v4`), saved points, parcels, and weather records. No cloud account, backend, or external AI service is added.
+- Bumps the service-worker cache to v0.8.1.
 
-## Today's Hunt scoring
-Each available forecast hour is scored 100 when the wind-from sector matches that stand's saved Ideal Wind, 0 when it does not, and 50 when the forecast direction is variable/unavailable. The stand score is the average across up to the next 24 forecast hours. This is a transparent wind-rule match, not a probability of deer activity, deer presence, or harvest success. A forecast must be no more than three hours old; stale or failed forecasts do not generate a recommendation. Refresh the forecast at the stand coordinates for the most relevant local grid forecast. GPS identifies where to request a forecast; it does not measure wind.
+## Important limits
+The suitability index is a transparent planning aid, not a validated deer-activity model, harvest probability, or guarantee. The temperature and wind-speed bands are general planning heuristics, not proven whitetail behavior rules. It does not yet incorporate barometric-pressure trends, on-site wind instruments, terrain/thermal effects, hunting pressure, food/bedding locations, access disturbance, or your personal observation journal. NWS wind and precipitation are forecast values, not measurements at the stand. Always verify conditions and make the final decision yourself.
 
-## Deployment
-This is the local-only continuation of v0.7.2. Extract the ZIP and upload its contents to the root of the existing GitHub Pages repository. Do not upload the ZIP itself or nest the contents inside another folder. Existing saved data remains in the same browser storage key. Do not upload the v0.8.0 cloud foundation build; cloud is intentionally deferred.
+This is **not yet a conversational generative-AI advisor**. A future AI chat/reasoning layer will require a secure backend so no private API key is exposed in the public browser app. We can keep designing that while building useful local decision tools first.
 
-## Testing
-Run `npm run check` and `npm test`. Automated tests are not a substitute for iPhone Safari and field testing.
+## Deploy
+Extract this ZIP and upload its contents (not the ZIP itself or its parent folder) to the root of the existing GitHub Pages repository. Commit to `main` and allow Pages to deploy. Existing saved data stays in the same browser storage key; do not clear Safari website data or delete the Home Screen app. The v0.8.0 cloud-foundation ZIP is not part of this release.
 
-## Privacy and limitations
-Saved property names, coordinates, notes, Ideal Wind settings, and other records remain in local browser storage on this device. They are not synced to a CSO server. Weather requests send selected coordinates to the National Weather Service; map tiles and place search use their respective public services. NWS hourly forecasts are modeled grid forecasts, not on-site wind measurements.
+## Run checks
+```sh
+npm run check
+npm test
+```
+Automated tests do not replace testing on your iPhone and checking actual field conditions.
 
+## Privacy
+Saved hunting locations and preferences remain in local browser storage on this device. Weather requests send forecast coordinates to `api.weather.gov`; map requests contact their respective tile providers. No CSO cloud sync is configured.

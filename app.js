@@ -136,6 +136,15 @@
     $('tempValue').textContent=w.temperature?`${w.temperature}°${w.temperatureUnit}`:'—';
     $('weatherSummary').textContent=`${w.summary||'Forecast loaded'}${w.locationLabel?' · '+w.locationLabel:''}${w.startTime?' · '+w.startTime:''}${w.fetchedAt?' · Updated '+new Date(w.fetchedAt).toLocaleString():''}`;
   }
+  // Transparent local suitability index. It scores forecast comfort/logistics, not deer activity.
+  function scoreHuntHour(stand,h){
+    const windMatch=!h.windSector?null:stand.winds.includes(h.windSector);
+    const windScore=windMatch===null?32:(windMatch?65:0);
+    const speed=h.windSpeedMinMph===null?5:(h.windSpeedMaxMph>25?0:h.windSpeedMaxMph>18?4:h.windSpeedMinMph<3?5:10);
+    const temp=h.temperature===null?8:(h.temperature>=28&&h.temperature<=62?15:(h.temperature>=18&&h.temperature<=72?10:5));
+    const precip=h.precipitationProbability===null?5:(h.precipitationProbability<=20?10:h.precipitationProbability<=50?6:h.precipitationProbability<=75?3:0);
+    return {score:Math.round(windScore+speed+temp+precip),windMatch,parts:{wind:windScore,speed,temperature:temp,precipitation:precip}};
+  }
   function renderTodayHunt(){
     const now=new Date();
     $('todayDate').textContent=now.toLocaleDateString([], {weekday:'long',month:'long',day:'numeric'});
@@ -155,11 +164,11 @@
     let ranked=[];
     if(fresh&&periods.length){
       ranked=configured.map(stand=>{
-        const scored=periods.map(h=>({...h,score:!h.windSector?50:(stand.winds.includes(h.windSector)?100:0)}));
+        const scored=periods.map(h=>({...h,...scoreHuntHour(stand,h)}));
         const average=Math.round(scored.reduce((sum,h)=>sum+h.score,0)/scored.length);
-        const idealHours=scored.filter(h=>h.score===100).length;
+        const idealHours=scored.filter(h=>h.windMatch===true).length;
         let bestRun=0,run=0,runStart=null,bestStart=null,bestEnd=null;
-        for(const h of scored){if(h.score===100){if(run===0)runStart=h.startTime;run++;if(run>bestRun){bestRun=run;bestStart=runStart;bestEnd=h.startTime;}}else run=0;}
+        for(const h of scored){if(h.windMatch===true){if(run===0)runStart=h.startTime;run++;if(run>bestRun){bestRun=run;bestStart=runStart;bestEnd=h.startTime;}}else run=0;}
         return {stand,scored,average,idealHours,bestRun,bestStart,bestEnd};
       }).sort((x,y)=>y.average-x.average||y.idealHours-x.idealHours||y.bestRun-x.bestRun);
     }
@@ -179,7 +188,7 @@
       $('todayStand').textContent='Set Ideal Wind first';$('todayScore').textContent='—';$('todayReason').textContent='Your stands are saved, but none has Ideal Wind directions yet. Set them in Map tools.';$('todayStatus').textContent='A stand needs at least one saved Ideal Wind direction before CSO can rank it.';
     }else if(best){
       $('todayStand').textContent=best.stand.name;$('todayScore').textContent=`${best.average}/100`;
-      let reason=`Forecast wind matches this stand’s Ideal Wind for ${best.idealHours} of ${best.scored.length} upcoming hours.`;
+      let reason=`CSO suitability index ${best.average}/100. Wind matches your Ideal Wind for ${best.idealHours} of ${best.scored.length} upcoming hours.`;
       if(best.bestRun>=2){const start=new Date(best.bestStart),end=new Date(Date.parse(best.bestEnd)+60*60*1000);reason+=` Best stretch: ${start.toLocaleTimeString([], {hour:'numeric'})}–${end.toLocaleTimeString([], {hour:'numeric'} )}.`;}
       $('todayReason').textContent=reason;
       $('todayStatus').textContent=`Forecast location: ${weather.locationLabel||'saved forecast point'}. Scores compare forecast wind direction with saved Ideal Wind only. Field conditions may differ.`;
@@ -194,14 +203,15 @@
     if(!hoursToShow.length){const empty=document.createElement('div');empty.className='sub';empty.textContent='Refresh conditions to see hourly wind.';$('todayHours').append(empty);}
     else for(const h of hoursToShow){
       const chipStand=best||topCandidate;
-      const score=chipStand?(chipStand.stand.winds.includes(h.windSector)?100:(!h.windSector?50:0)):50;
-      const chip=document.createElement('div');chip.className=`hour-chip ${score===100?'ideal':score===0?'poor':'unknown'}`;
+      const score=chipStand?scoreHuntHour(chipStand.stand,h).score:50;
+      const chip=document.createElement('div');chip.className=`hour-chip ${score>=70?'ideal':score<40?'poor':'unknown'}`;
       const time=document.createElement('strong');time.textContent=new Date(h.startTime).toLocaleTimeString([], {hour:'numeric'});
       const wind=document.createElement('span');wind.textContent=h.windDirectionRaw||'Variable';
-      const badge=document.createElement('em');badge.textContent=chipStand?(score===50?'?':`${score}`):'—';
+      const badge=document.createElement('em');badge.textContent=chipStand?`${score}`:'—';
       chip.append(time,wind,badge);$('todayHours').append(chip);
     }
-    $('todayHoursCaption').textContent=best?`${best.idealHours} ideal hours · next 24h`:topCandidate?'Top stand · next 24h':'Wind FROM · hourly forecast';
+    $('todayHoursCaption').textContent=best?`${best.idealHours} wind-match hours · next 24h`:topCandidate?'Top candidate · next 24h':'Wind FROM · hourly forecast';
+    const insight=$('huntAdvisorInsight');if(insight){insight.replaceChildren();if(best){const lead=document.createElement('strong');lead.textContent=`${best.stand.name} leads with ${best.average}/100.`;const detail=document.createElement('div');detail.className='sub';const next=best.scored.find(h=>h.windMatch===true);const p=next?.parts;detail.textContent=next?`Best wind-match window begins ${new Date(next.startTime).toLocaleString([], {weekday:'short',hour:'numeric'})}. Score factors: wind alignment ${p.wind}/65, wind speed ${p.speed}/10, temperature context ${p.temperature}/15, precipitation ${p.precipitation}/10.`:'No clear wind-match window.';insight.append(lead,detail);}else{const detail=document.createElement('div');detail.className='sub';detail.textContent=stands.length?'No stand has a reliable matching wind window in the current forecast. Check your on-site wind and access conditions.':'Add stands and set Ideal Wind to activate the Hunt Advisor.';insight.append(detail);}}
   }
   function focusRecommendedStand(){
     const stand=state.points.find(p=>p.id===todayRecommendedStandId);
@@ -386,7 +396,7 @@
       const forecastResponse=await fetchWithTimeout(hourlyUrl,{headers:{Accept:'application/geo+json'}});
       if(!forecastResponse.ok)throw new Error(`NWS hourly forecast returned HTTP ${forecastResponse.status}.`);
       const forecast=await forecastResponse.json(),periods=(forecast.properties?.periods||[]).slice(0,168);if(!periods.length)throw new Error('NWS returned no hourly forecast periods.');
-      const hourly=periods.map(h=>{let speed=null;try{speed=parseWindSpeed(h.windSpeed);}catch(_){ }return {startTime:cleanText(h.startTime||'',40),windDirectionRaw:cleanText(h.windDirection||'',20),windSector:windSector(h.windDirection),windSpeedMinMph:speed?.min??null,windSpeedMaxMph:speed?.max??null,temperature:Number.isFinite(Number(h.temperature))?Number(h.temperature):null,temperatureUnit:cleanText(h.temperatureUnit||'F',2),summary:cleanText(h.shortForecast||'',120),isDaytime:!!h.isDaytime};}).filter(h=>h.startTime);
+      const hourly=periods.map(h=>{let speed=null;try{speed=parseWindSpeed(h.windSpeed);}catch(_){ }return {startTime:cleanText(h.startTime||'',40),windDirectionRaw:cleanText(h.windDirection||'',20),windSector:windSector(h.windDirection),windSpeedMinMph:speed?.min??null,windSpeedMaxMph:speed?.max??null,temperature:Number.isFinite(Number(h.temperature))?Number(h.temperature):null,temperatureUnit:cleanText(h.temperatureUnit||'F',2),precipitationProbability:h.probabilityOfPrecipitation?.value!==null&&h.probabilityOfPrecipitation?.value!==undefined&&Number.isFinite(Number(h.probabilityOfPrecipitation.value))?Number(h.probabilityOfPrecipitation.value):null,summary:cleanText(h.shortForecast||'',120),isDaytime:!!h.isDaytime};}).filter(h=>h.startTime);
       const first=hourly[0];const min=first.windSpeedMinMph??0,max=first.windSpeedMaxMph??min;
       const next={...state,weather:{windSector:first.windSector,windDirectionRaw:first.windDirectionRaw,windSpeedMinMph:min,windSpeedMaxMph:max,temperature:first.temperature===null?'':String(first.temperature),temperatureUnit:first.temperatureUnit,summary:first.summary,startTime:first.startTime,hourly,fetchedAt:new Date().toISOString(),lat,lon,locationLabel:locationOverride?.label|| (locationOverride?.accuracy!==undefined?'Current GPS position':'Selected forecast point')}};
       saveState(next);renderAll();showToast('NWS forecast updated.');

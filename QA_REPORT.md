@@ -1,13 +1,21 @@
-# QA Report — CSO v0.8.0 Local Today's Hunt
+# CSO v0.8.1 — QA report
 
-- App smoke tests: **18/18 passed**.
-- Service-worker tests: **4/4 passed**.
-- JavaScript syntax checks: passed.
-- Static checks: passed (unique IDs, explicit button types, iPhone viewport metadata, CSP, PWA assets, service-worker shell, no `innerHTML` sinks, GPS/NWS/USGS wiring).
-- Today's Hunt test verifies a stand with matching Ideal Wind is ranked at 100/100 using the hourly forecast.
-- Stale-forecast test verifies no stand recommendation or score is shown when forecast age exceeds three hours.
-- No-match test verifies CSO does not recommend a stand when none of the upcoming hourly forecast periods match its Ideal Wind settings.
-- Existing local storage key `cso_gps_v4` retained; no migration or deletion of existing saved data.
-- Cloud sync is not configured or enabled; no Supabase project or account is required.
-- Today's Hunt score is a rule-based average of up to 24 hourly forecast wind-direction matches. It is not a deer-movement or harvest probability.
-- Actual iPhone rendering, NWS availability, and field forecast accuracy still require user testing.
+## Changes validated
+- Local Hunt Advisor suitability scoring added for hourly stand comparisons.
+- Score components are explicit: wind alignment 65, wind-speed context 10, temperature context 15, precipitation probability 10.
+- NWS hourly precipitation probability is normalized and stored when available; absent values remain unknown and receive neutral weighting.
+- Existing direct wind-match report remains unchanged.
+- Existing localStorage key/schema retained; no data migration or cloud configuration introduced.
+- Service-worker cache bumped to `cso-shell-v0.8.1`.
+
+## Automated validation
+- JavaScript syntax: passed.
+- App smoke tests: 18/18 passed.
+- Service-worker tests: 4/4 passed.
+- Static checks: passed (unique IDs, button types, iPhone viewport metadata, CSP, PWA assets, service-worker shell, no `innerHTML` sinks, GPS/NWS/USGS wiring).
+
+## Not yet validated
+- Actual iPhone Safari/Home Screen update behavior for this release.
+- Real NWS precipitation probability availability and local forecast accuracy across all service areas.
+- Whether heuristic temperature and wind-speed weights improve real hunting decisions; this requires field feedback and should not be represented as a deer-activity prediction.
+- Conversational LLM advisor, barometric-pressure analysis, terrain/thermal airflow, parcel auto-selection, and learned property-specific deer movement are not included.
