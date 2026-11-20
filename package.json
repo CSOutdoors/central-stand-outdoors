@@ -1,6 +1,6 @@
 {
   "name": "central-stand-outdoors-field-companion",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "private": true,
   "description": "Central Stand Outdoors GPS-first PWA field companion",
   "scripts": {

@@ -64,3 +64,10 @@ Saved property names, coordinates, notes, and wind settings stay in local browse
 - Map-based field wind observation: choose a saved stand, select **Set wind from map**, then tap the map in the direction the wind is coming FROM. The direction is saved to that stand and takes priority over the regional forecast for that stand.
 - Refresh an NWS forecast at the selected stand coordinates or at a fresh GPS fix. GPS identifies the forecast location; it does not measure wind. NWS wind remains a grid forecast, not an anemometer reading.
 - Existing manually drawn property boundaries and manual map stand placement remain available.
+
+## v0.6.2 mapping and Ideal Wind improvements
+- Street and road-name map is now the default, with a layer switch to USGS satellite imagery.
+- Added explicit town/address/road/place search using OpenStreetMap Nominatim; searches are user initiated, not autocomplete.
+- Stand markers now display green check (ideal), red alert (not ideal), or gray question mark (no current wind/rule).
+- Added an edit workflow for Ideal Wind on already-saved stands using the compass wheel; existing coordinates and other stand details remain unchanged.
+- The Ideal Wind Report compares the latest fresh regional NWS direction or a saved field observation against each stand's ideal directions. It is a current-condition comparison, not an hourly forecast report.

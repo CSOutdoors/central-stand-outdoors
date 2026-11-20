@@ -6,7 +6,7 @@
   const DIRECTIONS = ['N','NE','E','SE','S','SW','W','NW'];
   const TYPES = {stand:'Stand',camera:'Camera',food:'Food Plot',access:'Access Point',sighting:'Deer Sighting'};
   const state = {version:1,property:{name:'',lat:null,lon:null},points:[],parcels:[],weather:null};
-  let map = null, markers = {}, gpsMarker = null, accuracyCircle = null, scentLayers = [], scentFrame = 0, lastFix = null, toastTimer = null, mapCentered = false, weatherRefreshFailed = false, scentVisible = false, mapMode = 'idle', pendingMapPoint = null, boundaryVertices = [], boundaryPreview = null, boundaryLayers = [];
+  let map = null, markers = {}, mapLayers = {}, gpsMarker = null, accuracyCircle = null, scentLayers = [], scentFrame = 0, lastFix = null, toastTimer = null, mapCentered = false, weatherRefreshFailed = false, scentVisible = false, mapMode = 'idle', pendingMapPoint = null, boundaryVertices = [], boundaryPreview = null, boundaryLayers = [];
   const selectedWindDirs = new Set();
 
   function newId(){
@@ -83,19 +83,32 @@
     if(!window.L||typeof L.map!=='function'){$('map').classList.add('hidden');$('mapFallback').style.display='block';setStatus('mapStatus','Interactive map library did not load. Saved coordinates are still available.','error');return;}
     try{
       map=L.map('map',{zoomControl:true,preferCanvas:true}).setView([40.75,-89.4],11);
-      const tiles=L.tileLayer('https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}',{maxZoom:16,attribution:'Imagery: USDA, <a href="https://www.usgs.gov/">USGS The National Map: Orthoimagery</a>'});
-      tiles.on('tileerror',()=>setStatus('mapStatus','USGS map tiles could not be loaded. Check your connection; saved locations remain on this device.','error'));
-      tiles.addTo(map);
+      const streets=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>'});
+      const aerial=L.tileLayer('https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}',{maxZoom:16,attribution:'Imagery: <a href="https://www.usgs.gov/">USGS The National Map</a>'});
+      streets.addTo(map);mapLayers={streets,aerial};
+      L.control.layers({'Street & road names':streets,'Satellite imagery':aerial},{},{collapsed:true,position:'topright'}).addTo(map);
+      streets.on('tileerror',()=>setStatus('mapStatus','Street map tiles could not be loaded. Check your connection; saved locations remain on this device.','error'));
+      aerial.on('tileerror',()=>setStatus('mapStatus','Satellite tiles could not be loaded. Switch back to Street & road names.','error'));
       map.on('click',event=>handleMapClick(event.latlng));
-      setStatus('mapStatus','Map imagery is supplied by the USGS National Map.','');
+      setStatus('mapStatus','Street map is active so towns, roads, and place names are visible. Use the layer button to switch to satellite imagery.','');
     }catch(err){$('map').classList.add('hidden');$('mapFallback').style.display='block';setStatus('mapStatus','Map initialization failed: '+err.message,'error');map=null;}
   }
-  function popupNode(point){const box=document.createElement('div');const strong=document.createElement('strong');strong.textContent=point.name;const kind=document.createElement('div');kind.textContent=TYPES[point.type];const winds=document.createElement('div');winds.textContent='Safe wind from: '+(point.winds.length?point.winds.join(', '):'not set');const observed=document.createElement('div');observed.textContent=point.windFromDeg===null?'Observed wind: not set':`Observed wind FROM ${compass16(point.windFromDeg)} · ${point.windObservedAt?new Date(point.windObservedAt).toLocaleString():''}`;const notes=document.createElement('div');notes.textContent=point.notes;box.append(strong,kind,winds,observed,notes);return box;}
+  function idealWindStatus(point){
+    const observed=point.windFromDeg!==null?windSector(compass16(point.windFromDeg)):null;
+    const age=state.weather?.fetchedAt?Date.now()-Date.parse(state.weather.fetchedAt):Infinity;
+    const forecast=state.weather&&Number.isFinite(age)&&age>=0&&age<=3*60*60*1000?state.weather.windSector:null;
+    const current=observed||forecast;
+    if(!point.winds?.length||!current)return 'unknown';
+    return point.winds.includes(current)?'good':'bad';
+  }
+  function windStatusLabel(point){const status=idealWindStatus(point);return status==='good'?'IDEAL WIND':status==='bad'?'NOT IDEAL':'SET IDEAL WIND';}
+  function pinIcon(point){const status=idealWindStatus(point),symbol=status==='good'?'✓':status==='bad'?'!':'?';return L.divIcon({className:'',html:`<span class="cso-pin ${status}">${symbol}</span>`,iconSize:[30,30],iconAnchor:[15,15]});}
+  function popupNode(point){const box=document.createElement('div');const strong=document.createElement('strong');strong.textContent=point.name;const kind=document.createElement('div');kind.textContent=TYPES[point.type];const winds=document.createElement('div');winds.textContent='Safe wind from: '+(point.winds.length?point.winds.join(', '):'not set');const observed=document.createElement('div');observed.textContent=point.windFromDeg===null?'Observed wind: not set':`Observed wind FROM ${compass16(point.windFromDeg)} · ${point.windObservedAt?new Date(point.windObservedAt).toLocaleString():''}`;const notes=document.createElement('div');notes.textContent=point.notes;const ideal=document.createElement('strong');ideal.textContent=point.type==='stand'?windStatusLabel(point):'';box.append(strong,kind,winds,observed,ideal,notes);return box;}
   function draw(){
     if(!map)return;
     Object.values(markers).forEach(m=>map.removeLayer(m));markers={};
     for(const point of state.points){
-      const marker=L.marker([point.lat,point.lon],{title:point.name,alt:`${point.name}, ${TYPES[point.type]} location`}).addTo(map).bindPopup(popupNode(point));
+      const marker=L.marker([point.lat,point.lon],{title:point.name,alt:`${point.name}, ${TYPES[point.type]} location`,icon:point.type==='stand'?pinIcon(point):undefined}).addTo(map).bindPopup(popupNode(point));
       markers[point.id]=marker;
     }
     for(const layer of boundaryLayers)map.removeLayer(layer);boundaryLayers=[];
@@ -109,7 +122,7 @@
       const item=document.createElement('article');item.className='item';
       const name=document.createElement('div');name.className='itemname';name.textContent=point.name;
       const meta=document.createElement('div');meta.className='itemmeta';meta.textContent=`${TYPES[point.type]} · ${point.lat.toFixed(5)}, ${point.lon.toFixed(5)} · GPS ±${point.accuracy?Math.round(point.accuracy)+' m':'unknown'}`;
-      const wind=document.createElement('div');wind.className='itemmeta';wind.textContent=(point.winds.length?'Safe wind from: '+point.winds.join(', '):'No wind rule set')+(point.windFromDeg!==null?` · Observed FROM ${compass16(point.windFromDeg)}`:'');
+      const wind=document.createElement('div');wind.className='itemmeta';wind.textContent=(point.winds.length?'Ideal wind FROM: '+point.winds.join(', '):'No ideal wind set')+(point.windFromDeg!==null?` · Observed FROM ${compass16(point.windFromDeg)}`:'')+(point.type==='stand'?` · ${windStatusLabel(point)}`:'');
       const actions=document.createElement('div');actions.className='actions';
       const show=document.createElement('button');show.type='button';show.className='secondary small';show.textContent='Show on map';show.disabled=!map;show.addEventListener('click',()=>{if(map){map.setView([point.lat,point.lon],16);markers[point.id]?.openPopup();$('mapHeading').scrollIntoView({behavior:'smooth',block:'start'});}});
       const del=document.createElement('button');del.type='button';del.className='warn small';del.textContent='Delete';del.setAttribute('aria-label',`Delete ${point.name}`);del.addEventListener('click',()=>deletePoint(point.id));
@@ -147,7 +160,7 @@
   }
   function renderScentControls(){
     const windSelect=$('windStandSelect');if(windSelect){const selected=windSelect.value;windSelect.replaceChildren();const blank=document.createElement('option');blank.value='';blank.textContent='Choose a saved stand';windSelect.append(blank);for(const stand of state.points.filter(p=>p.type==='stand')){const option=document.createElement('option');option.value=stand.id;option.textContent=stand.name;windSelect.append(option);}if(selected)windSelect.value=selected;}
-    const select=$('scentStand');if(!select)return;const prior=select.value;select.replaceChildren();const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent='Choose a saved stand';select.append(placeholder);
+    const idealSelect=$('idealWindStandSelect');if(idealSelect){const keep=idealSelect.value;idealSelect.replaceChildren();const opt=document.createElement('option');opt.value='';opt.textContent='Choose a stand';idealSelect.append(opt);for(const stand of state.points.filter(p=>p.type==='stand')){const o=document.createElement('option');o.value=stand.id;o.textContent=stand.name;idealSelect.append(o);}if(keep)idealSelect.value=keep;}const select=$('scentStand');if(!select)return;const prior=select.value;select.replaceChildren();const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent='Choose a saved stand';select.append(placeholder);
     for(const stand of state.points.filter(p=>p.type==='stand')){const option=document.createElement('option');option.value=stand.id;option.textContent=stand.name;select.append(option);}if(prior)select.value=prior;
     if(!state.weather||!Number.isFinite(state.weather.windSpeedMinMph))$('scentStatus').textContent='Load a local forecast to provide wind speed for the plume.';
     else $('scentStatus').textContent='Choose a stand. A field-observed wind direction at that stand takes priority over the NWS regional direction.';
@@ -184,6 +197,34 @@
       map.fitBounds(haze.getBounds().pad(.45));
     }
     const toDir=DIRECTIONS[Math.round(to/45)%8];setStatus('scentStatus',`Scent is projected generally ${toDir} from ${stand.name}. Wind FROM ${compass16(from)}${stand.windFromDeg!==null?' (field observed)':' (NWS forecast)'} at ${Math.round(state.weather.windSpeedMinMph)}–${Math.round(state.weather.windSpeedMaxMph)} mph. The widening cloud and moving particles illustrate dispersion, not a measured scent boundary.`,'success');
+  }
+  function editIdealWind(){
+    const stand=state.points.find(p=>p.id===$('idealWindStandSelect').value&&p.type==='stand');
+    if(!stand){showToast('Choose a saved stand first.');return;}
+    selectedWindDirs.clear();stand.winds.forEach(dir=>selectedWindDirs.add(dir));
+    $('windChecks').querySelectorAll('[data-direction]').forEach(button=>button.setAttribute('aria-pressed',String(selectedWindDirs.has(button.dataset.direction))));
+    $('idealWindEditStatus').textContent=`Editing ideal wind for ${stand.name}. Tap all wind directions that keep your scent away from deer, then save.`;
+    $('saveIdealWindBtn').disabled=false;$('windChecks').scrollIntoView({behavior:'smooth',block:'center'});
+  }
+  function saveIdealWind(){
+    const stand=state.points.find(p=>p.id===$('idealWindStandSelect').value&&p.type==='stand');
+    if(!stand){showToast('Choose a saved stand first.');return;}
+    const winds=DIRECTIONS.filter(dir=>selectedWindDirs.has(dir));
+    try{saveState({...state,points:state.points.map(p=>p.id===stand.id?{...p,winds}:p)});$('saveIdealWindBtn').disabled=true;$('idealWindEditStatus').textContent=`Ideal wind saved for ${stand.name}: ${winds.length?winds.join(', '):'none selected'}.`;renderAll();showToast(`Ideal wind updated for ${stand.name}.`);}catch(err){showToast(err.message);}
+  }
+  async function searchMapPlace(){
+    const query=$('mapSearch').value.trim();if(!query){showToast('Enter a town, road, address, or place to find.');return;}
+    if(!navigator.onLine){showToast('Map search needs an internet connection.');return;}
+    const button=$('mapSearchBtn');button.disabled=true;button.textContent='Searching…';
+    try{
+      const url='https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=us&q='+encodeURIComponent(query);
+      const response=await fetch(url,{headers:{'Accept':'application/json'},signal:AbortSignal.timeout(10000)});
+      if(!response.ok)throw new Error('Place search is temporarily unavailable.');
+      const results=await response.json();if(!Array.isArray(results)||!results.length)throw new Error('No matching town, road, or address found. Try adding the county or state.');
+      const result=results[0],lat=Number(result.lat),lon=Number(result.lon);if(!finiteCoord(lat,lon))throw new Error('The map search returned an invalid location.');
+      map.setView([lat,lon],Math.max(map.getZoom(),15));setStatus('mapStatus',`Map centered on ${cleanText(result.display_name,180)}. You can now add a stand or draw a property boundary here.`,'success');
+    }catch(err){showToast(err.name==='TimeoutError'?'Place search timed out. Try again.':err.message||'Place search failed.');}
+    finally{button.disabled=false;button.textContent='Find on map';}
   }
   function renderAll(){renderList();renderWeather();renderAdvisor();draw();if(map&&!mapCentered){const target=state.property.lat!==null?[state.property.lat,state.property.lon]:(state.points[0]?[state.points[0].lat,state.points[0].lon]:null);if(target){map.setView(target,14);mapCentered=true;}}}
   function windSector(direction){
@@ -269,7 +310,7 @@
     }catch(err){showToast(`Restore failed: ${err.message}`);}
     finally{$('restoreFile').value='';}
   }
-  function updateConnection(){const online=navigator.onLine;$('connectionStatus').textContent=online?'ONLINE':'OFFLINE · saved data available';$('connectionStatus').classList.toggle('bad',!online);if(!online)setStatus('mapStatus','You are offline. Saved data works; live map tiles and NWS forecasts need internet.','error');else if(map)setStatus('mapStatus','Online · USGS map tiles load from the internet.','');}
+  function updateConnection(){const online=navigator.onLine;$('connectionStatus').textContent=online?'ONLINE':'OFFLINE · saved data available';$('connectionStatus').classList.toggle('bad',!online);if(!online)setStatus('mapStatus','You are offline. Saved data works; live map tiles and NWS forecasts need internet.','error');else if(map)setStatus('mapStatus','Online · Street names and satellite map layers load from the internet.','');}
   function registerWorker(){if('serviceWorker'in navigator&&window.isSecureContext){navigator.serviceWorker.register('./sw.js').catch(err=>setStatus('mapStatus','Offline app-shell setup failed: '+err.message,'error'));}}
 
   $('locateBtn').dataset.originalLabel=$('locateBtn').textContent;
@@ -280,6 +321,8 @@
   $('saveProperty').addEventListener('click',()=>withGpsButton($('saveProperty'),async fix=>updateProperty(fix)));
   $('savePoint').addEventListener('click',()=>withGpsButton($('savePoint'),async fix=>{try{savePoint(fix);}catch(err){showToast(err.message);}}));
   $('weatherBtn').addEventListener('click',loadWeather);
+  $('mapSearchBtn').addEventListener('click',searchMapPlace);$('mapSearch').addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();searchMapPlace();}});
+  $('editIdealWindBtn').addEventListener('click',editIdealWind);$('saveIdealWindBtn').addEventListener('click',saveIdealWind);
   $('manualPointBtn').addEventListener('click',()=>{setMapMode('point');$('mapModeHelp').textContent='Tap the map where you want to place the location.';});
   $('drawBoundaryBtn').addEventListener('click',()=>setMapMode('boundary'));
   $('finishBoundaryBtn').addEventListener('click',finishBoundary);

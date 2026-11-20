@@ -1,10 +1,17 @@
-# CSO v0.6.1 QA report
+# CSO v0.6.2 QA report
 
 ## Automated checks
 - Application smoke tests: 19/19 passed (existing GPS save, storage, backup/restore, weather, and advisor regression coverage).
 - Service-worker tests: 4/4 passed.
-- Static checks passed: unique IDs, explicit button types, iPhone viewport metadata, CSP, PWA manifest/icons, service-worker shell, no `innerHTML` sinks, GPS/NWS/USGS wiring.
+- Static checks passed: unique IDs, explicit button types, iPhone viewport metadata, CSP, PWA manifest/icons, service-worker shell, no `innerHTML` sinks, GPS/NWS/OpenStreetMap/USGS wiring.
 - JavaScript syntax checks passed for app.js and sw.js.
+
+## v0.6.2 changes
+- Street map (OpenStreetMap) is now the default to show towns, roads, and place names. USGS satellite imagery is available through Leaflet layer control.
+- Added manual place search for U.S. towns, addresses, roads, and public places using OpenStreetMap Nominatim. No autocomplete; only searches after user action.
+- Ideal Wind wheel now has a circular compass presentation and can edit existing saved stands without recreating the stand.
+- Map stand markers indicate current status: green check = ideal wind match, red = not ideal, gray = no active ideal-wind comparison. Status uses a fresh NWS forecast (maximum 3 hours old) unless a field-observed wind direction exists for that stand.
+- Existing Today’s Hunt stand comparison is now presented as Ideal Wind Report. It compares the current wind only; it does not calculate an hourly percentage report.
 
 ## v0.6.1 changes
 - ScentCast increased to 280 smaller particles with faster movement (roughly 1.5–2.5 seconds to travel through the modeled plume, depending on wind speed). Reduced-motion preference still disables animation.
