@@ -1,0 +1,22 @@
+import assert from 'node:assert/strict';
+import { generatePixelSterImage } from '../engine/pixelster.js';
+const image = 'data:image/jpeg;base64,ZmFrZQ==';
+const calls=[];
+const fetchMock=async (url, options) => {
+  calls.push({url,options});
+  if (url === 'https://freeapi.pro/api/pti') return {ok:true,status:200,json:async()=>({success:true,imageUrl:'https://cdn.example.test/result.png'})};
+  return {ok:true,blob:async()=>new Blob([new Uint8Array([137,80,78,71])],{type:'image/png'})};
+};
+const result=await generatePixelSterImage(image,'Preserve this actual whitetail rack',fetchMock);
+assert.match(result,/^data:image\/png;base64,/);
+assert.equal(calls.length,2);
+assert.equal(calls[0].url,'https://freeapi.pro/api/pti');
+assert.equal(calls[0].options.method,'POST');
+const payload=JSON.parse(calls[0].options.body);
+assert.equal(payload.prompt,'Preserve this actual whitetail rack');
+assert.equal(payload.imageBase64,image);
+assert.equal(payload.ratio,'3:2');
+await assert.rejects(()=>generatePixelSterImage('not-an-image','test',fetchMock),/supported image/);
+const failing=async()=>({ok:false,status:429,json:async()=>({error:'Fair-use limit reached'})});
+await assert.rejects(()=>generatePixelSterImage(image,'test',failing),/Fair-use limit reached/);
+console.log(JSON.stringify({passed:['Posts image-to-image request without credentials','Sends reference photo and rack-preservation prompt','Retrieves and converts generated image to local data URL','Rejects unsupported input image data','Surfaces provider throttling/error responses'],total:5},null,2));

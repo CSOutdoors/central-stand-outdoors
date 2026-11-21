@@ -94,8 +94,8 @@ assert.equal(elements.sumPhoto.textContent, 'Ready');
 assert.match(elements.previewCaption.textContent, /Local preview only/);
 
 await elements.create.dispatch('click');
-assert.match(elements.status.textContent, /Live AI generation is not connected/);
-assert.equal(fetchCalls, 0, 'Local preview must not upload photos or call a remote service');
+assert.match(elements.status.textContent, /confirm that you want to send/);
+assert.equal(fetchCalls, 0, 'The free AI provider must not receive photos until the consent checkbox is checked');
 
 store.set('cso_trophy_engine_endpoint', 'https://approved-worker.example');
 await elements.create.dispatch('click');

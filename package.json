@@ -1,14 +1,17 @@
 {
   "name": "central-stand-outdoors",
-  "version": "0.8.5",
+  "version": "0.8.9",
   "private": true,
   "description": "CSO Trophy Studio first, with the local-first hunting companion preserved as a secondary experience",
   "scripts": {
     "check": "python3 tests/static-check.py",
-    "test": "node tests/smoke-test.cjs && node tests/trophy-intake.test.mjs && node tests/trophy-ui-smoke.test.mjs",
+    "test": "node tests/smoke-test.cjs && node tests/trophy-intake.test.mjs && node tests/trophy-ui-smoke.test.mjs && node tests/trophy-gallery.test.mjs",
     "test:sw": "node tests/service-worker-test.cjs",
     "test:engine": "node tests/engine-test.mjs",
-    "test:all": "npm run check && npm test && npm run test:sw && npm run test:engine"
+    "test:all": "npm run check && npm test && npm run test:sw && npm run test:engine && npm run test:engine-free && npm run test:pixelster && npm run test:lodge",
+    "test:engine-free": "node tests/engine-free-test.mjs",
+    "test:pixelster": "node tests/pixelster-test.mjs",
+    "test:lodge": "node tests/lodge-test.mjs"
   },
   "type": "module"
 }

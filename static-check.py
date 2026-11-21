@@ -54,6 +54,8 @@ for path in ['./index.html', './hunt.html', './trophy.js', './trophy-intake.js',
 trophy_js = (ROOT / 'trophy.js').read_text()
 assert 'fetch(endpoint' in trophy_js and 'uploadConsent' in trophy_js
 assert 'localStorage.setItem(endpointKey' in trophy_js
+assert 'cloudflare-free' in trophy_js and 'engineProvider' in html
+assert (ROOT / 'engine/worker-free.js').is_file()
 assert 'innerHTML' not in trophy_js, 'Avoid HTML string injection in Trophy Studio'
 assert 'serviceWorker.register' in trophy_js
 

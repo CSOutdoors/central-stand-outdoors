@@ -1,0 +1,14 @@
+name = "cso-trophy-image-engine-free"
+main = "worker-free.js"
+compatibility_date = "2026-11-20"
+
+[vars]
+APP_ORIGIN = "https://YOUR_GITHUB_USERNAME.github.io"
+MAX_REQUESTS_PER_HOUR = "3"
+
+[ai]
+binding = "AI"
+
+[[kv_namespaces]]
+binding = "CSO_RATE_LIMIT"
+id = "CREATE_KV_NAMESPACE_AND_PASTE_ID_HERE"
