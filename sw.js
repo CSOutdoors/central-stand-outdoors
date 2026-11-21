@@ -1,5 +1,5 @@
 'use strict';
-const CACHE_NAME = 'cso-shell-v0.8.9';
+const CACHE_NAME = 'cso-shell-v0.9.0';
 const APP_SHELL = [
   './',
   './index.html',
@@ -8,6 +8,8 @@ const APP_SHELL = [
   './lodge.html',
   './lodge.js',
   './trophy.js',
+  './app-boot.js',
+  './lodge-boot.js',
   './trophy-intake.js',
   './trophy-gallery.js',
   './engine/pixelster.js',
@@ -33,20 +35,25 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const request = event.request;
   if (request.method !== 'GET' || new URL(request.url).origin !== self.location.origin) return;
-  if (request.mode === 'navigate') {
-    event.respondWith(
-      fetch(request).then(response => {
-        if (response.ok) caches.open(CACHE_NAME).then(cache => cache.put(request, response.clone()));
-        return response;
-      }).catch(async () => (await caches.match(request)) || (await caches.match('./index.html')))
-    );
-    return;
-  }
-  event.respondWith(caches.match(request).then(cached => cached || fetch(request).then(response => {
-    if (response.ok) {
-      const copy = response.clone();
-      caches.open(CACHE_NAME).then(cache => cache.put(request, copy));
+
+  // Network-first prevents an installed iPhone PWA from remaining stuck on an
+  // old JavaScript/UI build. Cached files remain available when offline.
+  event.respondWith((async () => {
+    try {
+      const response = await fetch(request, { cache: 'no-store' });
+      if (response && response.ok) {
+        const cache = await caches.open(CACHE_NAME);
+        await cache.put(request, response.clone());
+      }
+      return response;
+    } catch (error) {
+      const cached = await caches.match(request);
+      if (cached) return cached;
+      if (request.mode === 'navigate') {
+        const home = await caches.match('./index.html');
+        if (home) return home;
+      }
+      throw error;
     }
-    return response;
-  })));
+  })());
 });

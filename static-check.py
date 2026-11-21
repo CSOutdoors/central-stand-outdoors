@@ -31,7 +31,8 @@ assert not duplicates, f'Duplicate IDs: {duplicates}'
 assert all(button.get('type') == 'button' for button in page.buttons), 'Every button must have explicit type=button'
 assert 'viewport-fit=cover' in html and 'apple-mobile-web-app-capable' in html
 assert 'Content-Security-Policy' in html
-assert './manifest.webmanifest' in html and './trophy.js' in html
+assert './manifest.webmanifest' in html and './app-boot.js' in html
+assert "await import('./trophy.js')" in (ROOT / 'app-boot.js').read_text()
 assert 'id="photo"' in html and 'id="cameraPhoto"' in html and 'capture="environment"' in html
 assert 'id="references"' in html and 'multiple' in html
 assert 'id="uploadConsent"' in html and 'id="privacyNotice"' in html

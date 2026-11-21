@@ -416,5 +416,5 @@ renderPreview();
 renderGallery();
 
 if ('serviceWorker' in navigator && window.isSecureContext) {
-  navigator.serviceWorker.register('./sw.js').catch(() => showStatus('The app shell could not be cached for offline use. Trophy Studio remains available while online.', true));
+  navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).then(registration => registration.update().catch(() => {})).catch(() => showStatus('The app shell could not be cached for offline use. Trophy Studio remains available while online.', true));
 }

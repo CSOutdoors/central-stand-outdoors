@@ -1,4 +1,4 @@
-# Central Stand Outdoors — Trophy Studio first (v0.8.9)
+# Central Stand Outdoors — Trophy Studio first (v0.9.0)
 
 ## Product direction
 
@@ -68,7 +68,7 @@ A separate Cloudflare Workers AI backend is included at `engine/worker-free.js`.
 Run `npm run test:lodge` to check the lodge page, all 12 study entries, filters, detail behavior, and offline cache entries.
 
 
-## Free no-signup AI image editing prototype (v0.8.9)
+## Free no-signup AI image editing prototype (v0.9.0)
 
 - Adds FreeAPI PixelSter as the default image-to-image provider, using its documented `POST /api/pti` endpoint and Flux Kontext Dev. The provider advertises no signup, no API key, no subscription, no watermark, and fair-use throttling.
 - The iPhone flow now prepares the selected primary harvest photo, sends it with CSO's antler-preservation prompt only after explicit consent, retrieves the resulting image, and enables download and local gallery save.
@@ -79,3 +79,10 @@ Run `npm run test:lodge` to check the lodge page, all 12 study entries, filters,
 - The adapter is covered by mocked request/response tests. A live provider call, CORS behavior, model output quality, antler fidelity, and Safari/iPhone operation have **not** yet been independently verified in this environment. This is a prototype integration, not a production SLA.
 
 Run `npm run test:pixelster` for adapter tests and `npm run test:all` for the full suite.
+
+
+## v0.9.0 iPhone PWA reliability patch
+- Network-first service-worker fetch strategy so an installed iPhone home-screen app does not remain pinned to stale UI/scripts while online; cached files remain available offline.
+- Added explicit service-worker update checks and visible module-startup error handling.
+- Added a prominent Lodge entry point in the Trophy Studio hero.
+- No changes to IndexedDB trophy records or hunting-companion localStorage keys.
