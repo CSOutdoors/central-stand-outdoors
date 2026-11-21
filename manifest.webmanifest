@@ -1,14 +1,14 @@
 {
   "id": "./",
-  "name": "Central Stand Outdoors",
-  "short_name": "Central Stand",
-  "description": "Your daily whitetail hunting decision companion.",
-  "start_url": "./",
+  "name": "CSO Trophy Studio",
+  "short_name": "Trophy Studio",
+  "description": "Personalized digital hunting keepsakes made from your real harvest photos.",
+  "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait-primary",
-  "background_color": "#101713",
-  "theme_color": "#142019",
+  "background_color": "#0c1310",
+  "theme_color": "#101915",
   "icons": [
     {
       "src": "./icons/icon-192.png",

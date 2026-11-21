@@ -1,0 +1,12 @@
+name = "cso-trophy-image-engine"
+main = "worker.js"
+compatibility_date = "2026-11-20"
+
+[vars]
+APP_ORIGIN = "https://YOUR_GITHUB_USERNAME.github.io"
+IMAGE_MODEL = "gpt-image-2.6-sunburst"
+MAX_REQUESTS_PER_HOUR = "8"
+
+[[kv_namespaces]]
+binding = "CSO_RATE_LIMIT"
+id = "CREATE_KV_NAMESPACE_AND_PASTE_ID_HERE"
