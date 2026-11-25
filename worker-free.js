@@ -1,4 +1,5 @@
 /**
+ * ARCHIVED — experimental prototype only; not active and not approved for customer photos.
  * CSO Trophy Studio — Cloudflare Workers AI free-tier image engine.
  * Bind Workers AI as `AI` and KV as `CSO_RATE_LIMIT`.
  * Configure APP_ORIGIN to the exact deployed app origin.

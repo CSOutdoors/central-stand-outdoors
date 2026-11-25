@@ -1,6 +1,6 @@
-import { generatePixelSterImage } from './engine/pixelster.js';
 import { MAX_REFERENCE_PHOTOS, validatePhotoFile, validateReferenceSelection, formatFileSize } from './trophy-intake.js';
 import { saveTrophy, listTrophies, deleteTrophy } from './trophy-gallery.js';
+import { formatGenerationUsage } from './trophy-usage.js';
 
 const $ = id => document.getElementById(id);
 const photoInput = $('photo');
@@ -13,10 +13,11 @@ const preview = $('preview');
 const createButton = $('create');
 const statusBox = $('status');
 const endpointKey = 'cso_trophy_engine_endpoint';
-const providerKey = 'cso_trophy_engine_provider';
-function currentProvider() {
-  try { return localStorage.getItem(providerKey) || 'pixelster-free'; } catch { return 'pixelster-free'; }
-}
+const turnstileSiteKeyKey = 'cso_trophy_turnstile_sitekey';
+let turnstileWidgetId = null;
+let turnstileRenderedSiteKey = '';
+let turnstileToken = '';
+let turnstileScriptPromise = null;
 
 let selectedStyle = 'Classic shoulder mount';
 let primaryFile = null;
@@ -24,9 +25,14 @@ let primaryUrl = '';
 let referenceFiles = [];
 let referenceUrls = [];
 let generatedDataUrl = '';
+let generationUsage = null;
+let generatedSaved = false;
 
 function currentEndpoint() {
   try { return localStorage.getItem(endpointKey) || ''; } catch { return ''; }
+}
+function currentTurnstileSiteKey() {
+  try { return localStorage.getItem(turnstileSiteKeyKey) || ''; } catch { return ''; }
 }
 function showStatus(message, error = false) {
   statusBox.textContent = message;
@@ -37,17 +43,105 @@ function hideStatus() {
   statusBox.textContent = '';
   statusBox.classList.remove('show', 'error');
 }
+function secureEngineReady() {
+  return Boolean(currentEndpoint() && currentTurnstileSiteKey());
+}
+function syncCreateButton() {
+  const connected = secureEngineReady();
+  createButton.disabled = !primaryFile || !connected || !turnstileToken;
+  if (!primaryFile) createButton.textContent = 'ADD A HARVEST PHOTO TO BEGIN';
+  else if (!connected) createButton.textContent = 'SECURE AI NOT CONNECTED';
+  else if (!turnstileToken) createButton.textContent = 'COMPLETE SECURITY CHECK';
+  else createButton.textContent = generatedDataUrl ? 'REGENERATE DIGITAL MOUNT' : 'CREATE MY DIGITAL MOUNT';
+}
+function syncSaveButton() {
+  $('saveToGallery').disabled = !generatedDataUrl || !$('reviewMount').checked || generatedSaved;
+}
+function clearGeneratedResult(message = '') {
+  if (!generatedDataUrl) return false;
+  generatedDataUrl = '';
+  generationUsage = null;
+  generatedSaved = false;
+  $('generationUsage').textContent = '';
+  $('generationUsage').classList.add('hidden');
+  $('reviewMount').checked = false;
+  syncSaveButton();
+  $('resultActions').classList.add('hidden');
+  $('downloadResult').removeAttribute('href');
+  $('downloadResult').download = 'cso-digital-mount.png';
+  renderPreview();
+  syncCreateButton();
+  if (message) showStatus(message);
+  return true;
+}
+function invalidateGeneratedResult() {
+  clearGeneratedResult('Your mount choices changed. Create a fresh version before saving so the gallery matches the selected photo and settings.');
+}
+async function loadTurnstileScript() {
+  if (window.turnstile && typeof window.turnstile.render === 'function') return;
+  if (!turnstileScriptPromise) {
+    turnstileScriptPromise = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+      script.async = true;
+      script.defer = true;
+      script.onload = resolve;
+      script.onerror = () => reject(new Error('The security-check service could not load. No photo was sent.'));
+      document.head.append(script);
+    });
+  }
+  try { await turnstileScriptPromise; }
+  catch (error) { turnstileScriptPromise = null; throw error; }
+  if (!window.turnstile || typeof window.turnstile.render !== 'function') {
+    throw new Error('The security-check service did not initialize. No photo was sent.');
+  }
+}
+async function configureTurnstile() {
+  const siteKey = currentTurnstileSiteKey();
+  const container = $('turnstileWidget');
+  if (!siteKey || !currentEndpoint()) {
+    container.classList.add('hidden');
+    turnstileToken = '';
+    syncCreateButton();
+    return;
+  }
+  container.classList.remove('hidden');
+  if (turnstileRenderedSiteKey === siteKey && turnstileWidgetId !== null) return;
+  turnstileToken = '';
+  syncCreateButton();
+  await loadTurnstileScript();
+  if (turnstileWidgetId !== null && window.turnstile.remove) window.turnstile.remove(turnstileWidgetId);
+  container.replaceChildren();
+  turnstileWidgetId = window.turnstile.render(container, {
+    sitekey: siteKey,
+    action: 'cso_trophy_generate',
+    callback: token => {
+      turnstileToken = String(token || '');
+      syncCreateButton();
+      if (turnstileToken) showStatus('Security check complete. Your photos are still on this iPhone until you tap Create.');
+    },
+    'expired-callback': () => {
+      turnstileToken = '';
+      syncCreateButton();
+      showStatus('Security check expired. Complete it again before creating your mount.', true);
+    },
+    'error-callback': () => {
+      turnstileToken = '';
+      syncCreateButton();
+      showStatus('Security verification failed to load. No photo was sent.', true);
+    }
+  });
+  turnstileRenderedSiteKey = siteKey;
+}
 function updateEngineState() {
-  const provider = currentProvider();
-  const connected = provider === 'pixelster-free' || Boolean(currentEndpoint());
+  const connected = secureEngineReady();
   $('uploadConsentWrap').classList.toggle('hidden', !connected);
-  $('privacyNotice').textContent = provider === 'pixelster-free'
-    ? 'AI provider: FreeAPI PixelSter (Flux Kontext Dev), a third-party no-signup image-editing service. Your selected photo and prompt leave this iPhone only after consent and Create. The provider says it does not permanently store prompts or outputs; review its current privacy terms. Do not upload photos you do not have permission to share.'
-    : connected
-      ? 'Photo privacy: Nothing is uploaded until you check the consent box and tap Create. The configured service and its image provider will process your selected photos; review their current retention terms before continuing.'
-      : 'Photo privacy: Your selected photos stay in this browser session. No AI service is connected, so no upload or generation occurs.';
-  createButton.textContent = connected ? 'CREATE MY DIGITAL MOUNT' : 'PREVIEW MY TROPHY SETUP';
-  $('endpointSaved').textContent = provider === 'pixelster-free' ? 'Free no-signup AI selected.' : connected ? 'Secure endpoint saved on this device.' : '';
+  $('privacyNotice').textContent = connected
+    ? 'Photo privacy: your selected photos stay on this iPhone until you complete the security check, confirm consent, and tap Create. CSO does not save source or result images on its server. OpenAI API abuse-monitoring logs may retain submitted content for up to 30 days; flagged images may be retained for safety review. Review the privacy details before continuing.'
+    : 'Secure AI is not connected. Your selected photos stay in this browser session. No image is uploaded and no AI generation occurs until a CSO backend and Turnstile security check are configured.';
+  $('endpointSaved').textContent = connected ? 'Secure backend and public security key saved on this device.' : 'Secure backend not connected.';
+  configureTurnstile().catch(error => showStatus(error.message, true));
+  syncCreateButton();
 }
 function updateSummary() {
   $('sumStyle').textContent = selectedStyle.replace(' mount', '');
@@ -59,18 +153,37 @@ function updateSummary() {
   $('referenceCount').textContent = `${referenceFiles.length} of ${MAX_REFERENCE_PHOTOS} added`;
   $('clearPhotosBtn').classList.toggle('hidden', !primaryFile && !referenceFiles.length);
   $('addReferencesBtn').disabled = referenceFiles.length >= MAX_REFERENCE_PHOTOS;
-  createButton.disabled = !primaryFile;
-  if (!primaryFile) createButton.textContent = 'ADD A HARVEST PHOTO TO BEGIN';
-  else createButton.textContent = (currentProvider() === 'pixelster-free' || currentEndpoint()) ? 'CREATE MY DIGITAL MOUNT' : 'PREVIEW MY TROPHY SETUP';
+  syncCreateButton();
 }
 function renderPreview() {
   preview.replaceChildren();
   if (generatedDataUrl) {
-    const image = document.createElement('img');
-    image.src = generatedDataUrl;
-    image.alt = 'AI-generated digital trophy artwork';
-    preview.append(image);
-    $('previewCaption').textContent = 'AI-generated artwork · Review antler details against your original photo.';
+    const comparison = document.createElement('div');
+    comparison.className = 'compare-grid';
+    comparison.setAttribute('role', 'group');
+    comparison.setAttribute('aria-label', 'Original harvest photo compared with AI-generated digital mount');
+
+    const originalFigure = document.createElement('figure');
+    originalFigure.className = 'compare-figure';
+    const originalImage = document.createElement('img');
+    originalImage.src = primaryUrl;
+    originalImage.alt = 'Original harvest photo for identity and antler comparison';
+    const originalCaption = document.createElement('figcaption');
+    originalCaption.textContent = 'ORIGINAL HARVEST';
+    originalFigure.append(originalImage, originalCaption);
+
+    const resultFigure = document.createElement('figure');
+    resultFigure.className = 'compare-figure';
+    const resultImage = document.createElement('img');
+    resultImage.src = generatedDataUrl;
+    resultImage.alt = 'AI-generated digital trophy artwork to compare with the original buck';
+    const resultCaption = document.createElement('figcaption');
+    resultCaption.textContent = 'AI DIGITAL MOUNT';
+    resultFigure.append(resultImage, resultCaption);
+
+    comparison.append(originalFigure, resultFigure);
+    preview.append(comparison);
+    $('previewCaption').textContent = 'Compare both images before saving: check beam shape, visible tine count, left/right asymmetry, face, and coat. AI can still change these details.';
     return;
   }
   if (primaryUrl) {
@@ -121,6 +234,7 @@ function renderReferences() {
     remove.setAttribute('aria-label', `Remove reference photo ${index + 1}`);
     remove.addEventListener('click', () => {
       referenceFiles.splice(index, 1);
+      invalidateGeneratedResult();
       renderReferences();
       updateSummary();
       showStatus('Reference photo removed.');
@@ -139,6 +253,13 @@ function setPrimaryPhoto(file) {
   primaryFile = file;
   primaryUrl = URL.createObjectURL(file);
   generatedDataUrl = '';
+  generationUsage = null;
+  generatedSaved = false;
+  $('generationUsage').textContent = '';
+  $('generationUsage').classList.add('hidden');
+  $('uploadConsent').checked = false;
+  $('reviewMount').checked = false;
+  syncSaveButton();
   $('resultActions').classList.add('hidden');
   sourceImage.src = primaryUrl;
   sourceImage.classList.remove('hidden');
@@ -158,11 +279,17 @@ function handlePrimaryInput(input) {
 function addReferencePhotos(files) {
   const selection = validateReferenceSelection(files, referenceFiles.length);
   const existing = new Set(referenceFiles.map(file => `${file.name}|${file.size}|${file.lastModified || 0}`));
+  let added = 0;
   for (const file of selection.accepted) {
     const key = `${file.name}|${file.size}|${file.lastModified || 0}`;
     if (existing.has(key)) continue;
     referenceFiles.push(file);
     existing.add(key);
+    added += 1;
+  }
+  if (added) {
+    $('uploadConsent').checked = false;
+    invalidateGeneratedResult();
   }
   renderReferences();
   updateSummary();
@@ -177,6 +304,13 @@ function clearPhotos() {
   referenceFiles = [];
   referenceUrls = [];
   generatedDataUrl = '';
+  generationUsage = null;
+  generatedSaved = false;
+  $('generationUsage').textContent = '';
+  $('generationUsage').classList.add('hidden');
+  $('uploadConsent').checked = false;
+  $('reviewMount').checked = false;
+  syncSaveButton();
   photoInput.value = '';
   cameraInput.value = '';
   referenceInput.value = '';
@@ -268,28 +402,9 @@ async function renderGallery() {
   }
 }
 
-function buildPrompt() {
-  const name = $('name').value.trim();
-  const year = $('year').value.trim();
-  const background = $('background').value;
-  const plaque = $('plaque').value;
-  return `Create a premium, photorealistic digital taxidermy artwork based on the uploaded real whitetail deer harvest photograph(s). This is an EDIT of the supplied reference photography, not a new unrelated deer. MOUNT STYLE: ${selectedStyle}. DISPLAY SETTING: ${background}. PLAQUE: ${plaque}. Trophy name: ${name || 'No name supplied'}. Harvest year: ${year || 'Not supplied'}.\n\nCRITICAL SUBJECT PRESERVATION: Treat the original deer and antlers as the identity reference. Preserve the visible antler architecture as closely as possible: left/right beam shape, tine count, tine positions, curvature, spread, asymmetry, stickers, drop tines, and visible damage. Do not add, remove, straighten, mirror, enlarge, or invent antler points. Preserve the animal's recognizable face, coat color, and proportions. Do not turn it into a generic oversized trophy buck. If details are obscured in the reference, do not fabricate extra features.\n\nCreate a believable professionally mounted taxidermy presentation with anatomically plausible neck/head proportions, realistic hair texture, natural glass eyes, accurate skull/antler attachment, and professional studio lighting. Keep the full rack visible and inside the frame. Do not include extra deer, extra antlers, duplicate beams, text, logos, watermarks, or graphic overlays. ${$('preserve').checked ? 'Favor fidelity to the reference over dramatic embellishment.' : ''} The result must be clearly a stylized digital artwork based on the supplied harvest, not a claim of an exact physical replica.`;
-}
 
-
-async function blobToDataUrl(blob) {
-  return await new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(new Error('Could not prepare the image for the free AI service.'));
-    reader.readAsDataURL(blob);
-  });
-}
-
-
-
-$('chooseBtn').addEventListener('click', () => photoInput.click());
-$('cameraBtn').addEventListener('click', () => cameraInput.click());
+// Primary photo and camera actions are native labels, so iPhone file pickers
+// remain reachable even if a script is temporarily unavailable.
 photoInput.addEventListener('change', () => handlePrimaryInput(photoInput));
 cameraInput.addEventListener('change', () => handlePrimaryInput(cameraInput));
 $('addReferencesBtn').addEventListener('click', () => referenceInput.click());
@@ -308,39 +423,40 @@ document.querySelectorAll('.style').forEach(button => button.addEventListener('c
   button.classList.add('selected');
   button.setAttribute('aria-pressed', 'true');
   selectedStyle = button.dataset.style;
+  invalidateGeneratedResult();
   updateSummary();
 }));
-['background', 'name', 'year', 'plaque'].forEach(id => $(id).addEventListener('input', updateSummary));
+['background', 'name', 'year', 'plaque'].forEach(id => $(id).addEventListener('input', () => { invalidateGeneratedResult(); updateSummary(); }));
+$('preserve').addEventListener('change', invalidateGeneratedResult);
+$('reviewMount').addEventListener('change', syncSaveButton);
 
-$('saveEndpoint').addEventListener('click', () => {
-  const provider = $('engineProvider').value;
+$('saveEndpoint').addEventListener('click', async () => {
   const value = $('engineEndpoint').value.trim();
-  if (provider === 'pixelster-free') {
-    localStorage.removeItem(endpointKey);
-    localStorage.setItem(providerKey, provider);
-    updateEngineState(); updateSummary();
-    showStatus('Free no-signup AI selected. Your harvest photo is not sent until you check the consent box and tap Create.');
-    return;
-  }
+  const siteKey = $('engineTurnstileSiteKey').value.trim();
   try {
     const url = new URL(value);
-    if (url.protocol !== 'https:' || url.username || url.password) throw new Error('Use a secure HTTPS service URL without embedded credentials.');
+    if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) {
+      throw new Error('Use a secure HTTPS backend URL without credentials, query strings, or fragments.');
+    }
+    if (!/^[A-Za-z0-9_-]{20,128}$/.test(siteKey)) {
+      throw new Error('Enter the public Cloudflare Turnstile sitekey for your CSO website.');
+    }
     localStorage.setItem(endpointKey, url.href.replace(/\/$/, ''));
-    localStorage.setItem(providerKey, provider);
+    localStorage.setItem(turnstileSiteKeyKey, siteKey);
+    turnstileRenderedSiteKey = '';
+    turnstileToken = '';
+    await configureTurnstile();
     updateEngineState(); updateSummary();
-    showStatus('Secure service URL saved on this device. Generation requires a working backend and explicit photo consent.');
+    showStatus('Secure backend settings saved on this device. The server still must be deployed, enabled, and configured with its private secrets before any generation can occur.');
   } catch (error) {
-    $('endpointSaved').textContent = error.message || 'Enter a valid HTTPS service URL.';
-    if (error instanceof TypeError) $('endpointSaved').textContent = 'Enter a valid HTTPS service URL.';
+    $('endpointSaved').textContent = error.message || 'Enter a valid HTTPS backend URL and Turnstile sitekey.';
+    showStatus(error.message || 'Could not save the secure AI connection.', true);
   }
 });
-$('engineProvider').addEventListener('change', () => {
-  localStorage.setItem(providerKey, $('engineProvider').value);
-  updateEngineState(); updateSummary();
-});
+
 
 $('saveToGallery').addEventListener('click', async () => {
-  if (!generatedDataUrl) return;
+  if (!generatedDataUrl || !$('reviewMount').checked || generatedSaved) return;
   const button = $('saveToGallery');
   button.disabled = true;
   try {
@@ -350,67 +466,77 @@ $('saveToGallery').addEventListener('click', async () => {
       year: $('year').value.trim(),
       style: selectedStyle
     });
+    generatedSaved = true;
     await renderGallery();
+    syncSaveButton();
     showStatus('Your digital trophy is saved in this iPhone browser gallery. It is not cloud-backed up.');
-  } catch (error) { showStatus(error.message || 'Could not save this trophy.', true); }
-  finally { button.disabled = false; }
+  } catch (error) { showStatus(error.message || 'Could not save this trophy.', true); syncSaveButton(); }
 });
 
 createButton.addEventListener('click', async () => {
   if (!primaryFile) return;
-  const provider = currentProvider();
   const endpoint = currentEndpoint();
-  if (provider !== 'pixelster-free' && !endpoint) {
-    showStatus('Choose the free no-signup AI option or connect a configured AI backend. No photo was uploaded.');
+  if (!endpoint || !currentTurnstileSiteKey()) {
+    showStatus('Secure CSO AI is not connected. Your photo remains on this iPhone; no preview or prompt builder is being represented as AI generation.', true);
+    return;
+  }
+  if (!turnstileToken) {
+    showStatus('Complete the security check before creating your digital mount.', true);
     return;
   }
   if (!$('uploadConsent').checked) {
-    showStatus('Please confirm that you want to send these selected photos to the configured image service before creating your mount.', true);
+    showStatus('Please confirm that you want to send these selected photos through CSO to OpenAI for image editing.', true);
     return;
   }
   createButton.disabled = true;
   createButton.textContent = 'PREPARING YOUR PHOTOS…';
   showStatus('Preparing your selected reference photos…');
   try {
-    showStatus(provider === 'pixelster-free' ? 'Preparing your photo for the free image-editing model…' : 'Preparing your selected reference photos…');
-    if (provider === 'pixelster-free') {
-      const prepared = await resizeImage(primaryFile, 1536);
-      if (prepared.size > 3.4 * 1024 * 1024) throw new Error('This photo is still too large for the free provider (3.5 MB limit). Choose a smaller photo.');
-      showStatus('Sending your photo to FreeAPI PixelSter for AI editing…');
-      generatedDataUrl = await generatePixelSterImage(await blobToDataUrl(prepared), buildPrompt());
-    } else {
-      const form = new FormData();
-      const inputMaxSide = provider === 'cloudflare-free' ? 500 : 1536;
-      form.append('image', await resizeImage(primaryFile, inputMaxSide), 'harvest.jpg');
-      for (let index = 0; index < referenceFiles.length; index += 1) {
-        form.append('references', await resizeImage(referenceFiles[index], inputMaxSide), `reference-${index + 1}.jpg`);
-      }
-      form.append('prompt', buildPrompt()); form.append('style', selectedStyle);
-      showStatus('Sending your photos to the configured service for processing…');
-      const response = await fetch(endpoint, { method: 'POST', body: form });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || `Image service error (${response.status}).`);
-      if (!data.image) throw new Error('The image service returned no finished image.');
-      generatedDataUrl = `data:${data.mimeType || 'image/png'};base64,${data.image}`;
+    const form = new FormData();
+    form.append('image', await resizeImage(primaryFile, 1536), 'harvest.jpg');
+    for (let index = 0; index < referenceFiles.length; index += 1) {
+      form.append('references', await resizeImage(referenceFiles[index], 1536), `reference-${index + 1}.jpg`);
     }
+    form.append('style', selectedStyle);
+    form.append('background', $('background').value);
+    form.append('plaque', $('plaque').value);
+    form.append('name', $('name').value.trim());
+    form.append('year', $('year').value.trim());
+    form.append('preserve', String($('preserve').checked));
+    form.append('cf-turnstile-response', turnstileToken);
+    showStatus('Sending your photos through the secure CSO backend for AI editing…');
+    const response = await fetch(endpoint, { method: 'POST', body: form, cache: 'no-store' });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || `Secure image service error (${response.status}).`);
+    if (!data.image || data.mimeType !== 'image/png') throw new Error('The secure image service returned no finished PNG.');
+    generatedDataUrl = `data:image/png;base64,${data.image}`;
+    generatedSaved = false;
+    $('reviewMount').checked = false;
+    syncSaveButton();
+    generationUsage = data.usage || null;
+    $('generationUsage').textContent = formatGenerationUsage(generationUsage);
+    $('generationUsage').classList.remove('hidden');
     renderPreview();
     const filename = ($('name').value.trim() || 'cso-digital-mount').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
     $('downloadResult').href = generatedDataUrl;
     $('downloadResult').download = `${filename || 'cso-digital-mount'}.png`;
     $('resultActions').classList.remove('hidden');
-    showStatus('Your AI-generated digital mount is ready. Review the rack carefully against your original harvest photos before saving.');
+    showStatus('Your AI-generated digital mount is ready. Compare the original and result, then confirm your review before saving.');
   } catch (error) {
     showStatus(error.message || 'Something went wrong while creating your mount.', true);
   } finally {
-    createButton.disabled = !primaryFile;
-    createButton.textContent = (currentProvider() === 'pixelster-free' || currentEndpoint()) ? 'CREATE MY DIGITAL MOUNT' : 'PREVIEW MY TROPHY SETUP';
+    turnstileToken = '';
+    $('uploadConsent').checked = false;
+    if (window.turnstile && turnstileWidgetId !== null && window.turnstile.reset) window.turnstile.reset(turnstileWidgetId);
+    syncCreateButton();
   }
 });
 
-const endpoint = currentEndpoint();
-$('engineEndpoint').value = endpoint;
-$('engineProvider').value = currentProvider();
+
+$('engineEndpoint').value = currentEndpoint();
+$('engineTurnstileSiteKey').value = currentTurnstileSiteKey();
 updateEngineState();
+syncSaveButton();
 updateSummary();
 renderPreview();
 renderGallery();

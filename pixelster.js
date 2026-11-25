@@ -1,4 +1,5 @@
 /**
+ * ARCHIVED — not used by the CSO production bundle or active generation path.
  * Anonymous prototype adapter for FreeAPI PixelSter image-to-image.
  * The provider documents POST /api/pti, no API key, and an imageUrl result.
  * This is a third-party prototype dependency, not a production SLA.

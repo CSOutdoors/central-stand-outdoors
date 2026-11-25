@@ -1,5 +1,5 @@
 'use strict';
-const CACHE_NAME = 'cso-shell-v0.9.0';
+const CACHE_NAME = 'cso-shell-v0.9.4';
 const APP_SHELL = [
   './',
   './index.html',
@@ -7,12 +7,7 @@ const APP_SHELL = [
   './trophy.html',
   './lodge.html',
   './lodge.js',
-  './trophy.js',
-  './app-boot.js',
-  './lodge-boot.js',
-  './trophy-intake.js',
-  './trophy-gallery.js',
-  './engine/pixelster.js',
+  './trophy-app.js',
   './app.js',
   './manifest.webmanifest',
   './icons/icon-192.png',

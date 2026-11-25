@@ -5,8 +5,20 @@ compatibility_date = "2026-11-20"
 [vars]
 APP_ORIGIN = "https://YOUR_GITHUB_USERNAME.github.io"
 IMAGE_MODEL = "gpt-image-2.6-sunburst"
-MAX_REQUESTS_PER_HOUR = "8"
+GENERATION_ENABLED = "false"
+TURNSTILE_ACTION = "cso_trophy_generate"
+MAX_GENERATIONS_PER_DAY = "1"
+MAX_GENERATIONS_PER_IP_PER_DAY = "1"
 
-[[kv_namespaces]]
-binding = "CSO_RATE_LIMIT"
-id = "CREATE_KV_NAMESPACE_AND_PASTE_ID_HERE"
+[[durable_objects.bindings]]
+name = "CSO_USAGE_GUARD"
+class_name = "CSOUsageGuard"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["CSOUsageGuard"]
+
+# Add secrets only after the owner explicitly approves provider setup:
+#   npx wrangler secret put OPENAI_API_KEY
+#   npx wrangler secret put TURNSTILE_SECRET_KEY
+# Never place either secret in Git, the browser, or localStorage.

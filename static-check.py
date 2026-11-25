@@ -31,11 +31,19 @@ assert not duplicates, f'Duplicate IDs: {duplicates}'
 assert all(button.get('type') == 'button' for button in page.buttons), 'Every button must have explicit type=button'
 assert 'viewport-fit=cover' in html and 'apple-mobile-web-app-capable' in html
 assert 'Content-Security-Policy' in html
-assert './manifest.webmanifest' in html and './app-boot.js' in html
-assert "await import('./trophy.js')" in (ROOT / 'app-boot.js').read_text()
+assert './manifest.webmanifest' in html and './trophy-app.js' in html
+assert 'type="module"' not in html, 'Trophy Studio home must not depend on runtime ES module loading'
+assert (ROOT / 'trophy-app.js').is_file(), 'Missing production Trophy Studio bundle'
+assert not __import__('re').search(r'^\s*(?:import|export)\s', (ROOT / 'trophy-app.js').read_text(), __import__('re').M), 'Production bundle must have no module imports or exports'
 assert 'id="photo"' in html and 'id="cameraPhoto"' in html and 'capture="environment"' in html
+assert 'for="photo"' in html and 'for="cameraPhoto"' in html, 'Native photo labels must work without a JavaScript click handler'
 assert 'id="references"' in html and 'multiple' in html
 assert 'id="uploadConsent"' in html and 'id="privacyNotice"' in html
+assert 'id="generationUsage"' in html
+assert 'id="reviewMount"' in html and 'id="saveToGallery"' in html
+assert 'compare-grid' in html and 'I reviewed this mount against my original buck' in html
+assert 'id="turnstileWidget"' in html and 'id="engineTurnstileSiteKey"' in html
+assert 'challenges.cloudflare.com' in html and 'frame-src' in html
 assert 'no image has been generated' in html
 assert 'HUNTING COMPANION' in html and './hunt.html' in html
 assert not any('onclick' in attr for attr in page.buttons), 'Use registered event listeners, not inline handlers'
@@ -49,13 +57,26 @@ for icon in manifest['icons']:
 assert (ROOT / 'icons/apple-touch-icon.png').is_file()
 
 sw = (ROOT / 'sw.js').read_text()
-for path in ['./index.html', './hunt.html', './trophy.js', './trophy-intake.js', './app.js', './manifest.webmanifest']:
+for path in ['./index.html', './hunt.html', './trophy-app.js', './lodge.js', './app.js', './manifest.webmanifest']:
     assert path in sw, f'Missing from service-worker app shell: {path}'
 
 trophy_js = (ROOT / 'trophy.js').read_text()
 assert 'fetch(endpoint' in trophy_js and 'uploadConsent' in trophy_js
 assert 'localStorage.setItem(endpointKey' in trophy_js
-assert 'cloudflare-free' in trophy_js and 'engineProvider' in html
+assert 'cf-turnstile-response' in trophy_js and 'turnstile.render' in trophy_js
+assert 'generatePixelSterImage' not in trophy_js and 'freeapi.pro' not in html
+assert 'pixelster' not in (ROOT / 'trophy-app.js').read_text().lower()
+assert 'GENERATION_ENABLED' in (ROOT / 'engine/worker.js').read_text()
+worker_source = (ROOT / 'engine/worker.js').read_text()
+assert 'summarizeUsage' in worker_source
+assert 'imageInput: 8, textInput: 5, imageOutput: 30' in worker_source, 'Use direct Images API Standard rates, not Batch rates'
+assert "RATE_CARD_CHECKED_ON = '2026-11-24'" in worker_source
+assert 'formatGenerationUsage' in (ROOT / 'trophy-usage.js').read_text()
+assert 'REGENERATE DIGITAL MOUNT' in trophy_js
+assert 'invalidateGeneratedResult' in trophy_js and 'syncSaveButton' in trophy_js
+assert 'reviewMount' in trophy_js and 'generatedSaved' in trophy_js
+assert 'TURNSTILE_SECRET_KEY' in (ROOT / 'engine/worker.js').read_text()
+assert 'CSOUsageGuard' in (ROOT / 'engine/worker.js').read_text()
 assert (ROOT / 'engine/worker-free.js').is_file()
 assert 'innerHTML' not in trophy_js, 'Avoid HTML string injection in Trophy Studio'
 assert 'serviceWorker.register' in trophy_js
@@ -75,4 +96,4 @@ assert 'https://api.weather.gov/points/' in app
 assert 'https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/' in app
 assert 'innerHTML' not in app, 'Avoid HTML string injection in app.js'
 
-print('Static checks passed: Trophy Studio home, iPhone photo/camera intake, consent gate, PWA metadata, offline shell, safe DOM updates, and preserved hunting-companion storage/GPS/weather wiring.')
+print('Static checks passed: Trophy Studio home, iPhone photo/camera intake, consent and Turnstile, side-by-side result review/save gate, fail-closed secure backend, PWA metadata, offline shell, safe DOM updates, and preserved hunting-companion storage/GPS/weather wiring.')

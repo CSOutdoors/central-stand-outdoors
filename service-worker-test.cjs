@@ -34,7 +34,7 @@ vm.runInContext(src, context, { filename: 'sw.js' });
   let installPromise;
   listeners.install({ waitUntil: promise => { installPromise = promise; } });
   await installPromise;
-  for (const file of ['./index.html', './hunt.html', './trophy.js', './trophy-intake.js', './app.js', './manifest.webmanifest']) {
+  for (const file of ['./index.html', './hunt.html', './trophy-app.js', './lodge.js', './app.js', './manifest.webmanifest']) {
     assert.ok(added.includes(file), `Expected ${file} in app shell`);
   }
   assert.ok(skipped);
